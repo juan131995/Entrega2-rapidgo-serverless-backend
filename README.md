@@ -114,16 +114,16 @@ Notification Hubs permite enviar notificaciones a dispositivos móviles Android 
 
 El flujo principal del sistema se centra en el proceso de registro de pedidos desde la aplicación móvil.
 
-Proceso general
+### Proceso general
 
 1. El cliente envía una solicitud para crear un pedido desde la aplicación móvil.
-2. La solicitud llega a API Management.
-3. API Management redirige la petición a una Azure Function llamada registrarPedido.
-4. La función almacena la información del pedido en Cosmos DB.
-5. Cuando el estado del pedido cambia, se ejecuta otra función que actualiza la información.
-6. Finalmente, se envía una notificación al cliente utilizando Notification Hubs.
+2. La solicitud llega al servicio de API Management.
+3. API Management redirige la petición a una Azure Function llamada **registrarPedido**.
+4. La función procesa la solicitud y almacena la información del pedido en **Cosmos DB**.
+5. Cuando el estado del pedido cambia, se ejecuta una función llamada **actualizarEstado** que modifica la información del pedido.
+6. Finalmente, el sistema envía una notificación al cliente utilizando **Notification Hubs**.
 
-Las pruebas de los servicios se realizaron utilizando la herramienta Postman.
+Las pruebas de los servicios se realizaron utilizando la herramienta **Postman**, permitiendo verificar el correcto funcionamiento de los endpoints y la comunicación entre los servicios del sistema.
 
 ## 6. Evidencias
 
