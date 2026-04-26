@@ -125,6 +125,11 @@ El flujo principal del sistema se centra en el proceso de registro de pedidos de
 
 Las pruebas de los servicios se realizaron utilizando la herramienta **Postman**, permitiendo verificar el correcto funcionamiento de los endpoints y la comunicación entre los servicios del sistema.
 
+### Flujo del registro de pedido
+
+![Flujo de registro de pedido](assets/flujo-pedido.png)
+
+
 ## 6. Evidencias
 
 A continuación se presentan algunas capturas de pantalla que muestran el funcionamiento del sistema en el entorno de Azure.
