@@ -17,8 +17,6 @@
 
 **Fecha de entrega:** 14 de mayo de 2026
 
----
-
 # 1. Introducción
 
 RapidGo es una startup colombiana dedicada al servicio de domicilios que conecta clientes con restaurantes y tiendas locales mediante una aplicación móvil desarrollada en React Native. Actualmente la plataforma opera en ciudades como Medellín, Manizales y Pereira.
@@ -26,8 +24,6 @@ RapidGo es una startup colombiana dedicada al servicio de domicilios que conecta
 El sistema actual utiliza una arquitectura monolítica desarrollada en Node.js desplegada en un servidor dedicado, lo cual ha generado múltiples problemas relacionados con escalabilidad, costos operativos y disponibilidad del servicio.
 
 El objetivo de este proyecto es diseñar e implementar una arquitectura **serverless en la nube utilizando Microsoft Azure**, que permita mejorar la escalabilidad, reducir costos mediante un modelo de pago por uso y garantizar alta disponibilidad del sistema.
-
----
 
 # 2. Arquitectura Propuesta
 
@@ -42,8 +38,6 @@ Los servicios utilizados en la solución son:
 * Notification Hubs para envío de notificaciones push
 
 Esta arquitectura permite que el sistema escale automáticamente según la demanda, eliminando la necesidad de administrar servidores físicos o máquinas virtuales.
-
----
 
 # 3. Modelo C4
 
@@ -68,8 +62,6 @@ Este diagrama muestra el sistema RapidGo como una caja negra y su interacción c
 
 ![Diagrama C1](assets/c1-contexto.png)
 
----
-
 ## C2 — Diagrama de Contenedores
 
 El diagrama de contenedores muestra los principales servicios que componen la arquitectura del sistema.
@@ -84,8 +76,6 @@ El diagrama de contenedores muestra los principales servicios que componen la ar
 
 ![Diagrama C2](assets/c2-contenedores.png)
 
----
-
 ## C3 — Diagrama de Componentes
 
 Este diagrama describe los componentes internos de la capa de lógica de negocio implementada con Azure Functions.
@@ -98,8 +88,6 @@ Este diagrama describe los componentes internos de la capa de lógica de negocio
 * notificarCliente
 
 ![Diagrama C3](assets/c3-componentes.png)
-
----
 
 # 4. Decisiones Arquitectónicas (ADR)
 
@@ -130,8 +118,6 @@ Se decidió utilizar Azure Functions debido a su modelo serverless que permite e
 
 * Posibles tiempos de arranque en frío (cold start)
 
----
-
 ## ADR-02 Cosmos DB vs Azure SQL Database
 
 ### Contexto
@@ -155,8 +141,6 @@ Se seleccionó Cosmos DB debido a su modelo NoSQL altamente escalable y su capac
 * Baja latencia
 * Modelo flexible de datos
 
----
-
 ## ADR-03 API Management como gateway de la API
 
 ### Contexto
@@ -172,19 +156,13 @@ El sistema requiere un punto de entrada centralizado para gestionar autenticaci�
 
 Se eligió API Management para proporcionar un gateway centralizado para la API.
 
----
-
 ## ADR-04 Uso de Blob Storage para almacenamiento de archivos
 
 Blob Storage permite almacenar imágenes de productos, comprobantes de entrega y reportes del sistema de forma segura y escalable.
 
----
-
 ## ADR-05 Notification Hubs para notificaciones push
 
 Notification Hubs permite enviar notificaciones en tiempo real a dispositivos Android y iOS utilizando FCM y APNs.
-
----
 
 # 5. Implementación
 
@@ -199,8 +177,6 @@ El flujo principal del sistema consiste en el procesamiento de pedidos desde la 
 5. Se envía una notificación al cliente utilizando Notification Hubs.
 
 Las pruebas de los endpoints se realizaron utilizando Postman.
-
----
 
 # 6. Evidencias
 
@@ -222,8 +198,6 @@ Las siguientes capturas muestran la implementación del sistema en Azure.
 
 ![Notification Hub](assets/notification-hub.png)
 
----
-
 # 7. Conclusiones
 
 La implementación de una arquitectura serverless en Microsoft Azure permitió resolver los principales problemas del sistema monolítico original.
@@ -238,9 +212,3 @@ Entre los beneficios obtenidos se destacan:
 Además, el uso del modelo C4 permitió documentar la arquitectura de forma clara, facilitando la comprensión del sistema para desarrolladores y arquitectos de software.
 
 Como trabajo futuro, se podría integrar un sistema de monitoreo avanzado utilizando Azure Monitor y Application Insights para mejorar la observabilidad del sistema.
-
-- Reducción de costos mediante un modelo de pago por uso
-- Alta disponibilidad del sistema
-- Simplificación en la administración de infraestructura
-
-Esta arquitectura proporciona una base sólida para el crecimiento futuro de la plataforma RapidGo.
