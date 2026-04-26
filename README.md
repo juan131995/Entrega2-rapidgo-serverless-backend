@@ -8,7 +8,7 @@ Profesor: Julian David Florez Sanchez
 
 Integrantes del grupo
 
-* Alejandro Guaman
+* Alejandro Guzman
 * Juan Pablo
 * Juan Carlos Montiel
 * Estudiante 4
