@@ -52,7 +52,7 @@ jobs:
         run: |
           RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
           LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}"
-          if ! az group exists --name "$RG" --output tsv; then
+          if [ "$(az group exists --name "$RG" --output tsv)" == "false" ]; then
             az group create --name "$RG" --location "$LOCATION" \
               --tags Environment=${{ steps.env.outputs.name }} ManagedBy=github-actions
             echo "Resource Group $RG creado"
@@ -96,7 +96,7 @@ jobs:
         id: rg
         run: |
           RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
-          if az group exists --name "$RG" --output tsv; then
+          if [ "$(az group exists --name "$RG" --output tsv)" == "true" ]; then
             echo "was_created=false" >> $GITHUB_OUTPUT
           else
             echo "was_created=true" >> $GITHUB_OUTPUT
