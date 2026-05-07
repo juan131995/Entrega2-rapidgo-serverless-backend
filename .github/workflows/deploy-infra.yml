@@ -20,50 +20,62 @@ on:
         required: true
         default: 'no'
 
-env:
-  ARM_DEPLOYMENT_NAME: rapidgo-arm-deploy
-
 jobs:
-  validate:
-    name: Validate ARM Templates
+  create-rg:
+    name: Create Resource Group
     runs-on: ubuntu-latest
+    outputs:
+      rg_name: ${{ steps.env.outputs.rg_name }}
+      env_name: ${{ steps.env.outputs.env_name }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set environment name
+      - name: Set environment
         id: env
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "name=${{ github.event.inputs.environmentName }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
-            echo "name=dev" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "name=dev" >> $GITHUB_OUTPUT
+            NAME="${{ github.event.inputs.environmentName }}"
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ] || [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            NAME="dev"
           else
-            echo "name=dev" >> $GITHUB_OUTPUT
+            NAME="dev"
           fi
+          echo "env_name=$NAME" >> $GITHUB_OUTPUT
+          echo "rg_name=az-rapidgo-${NAME}-rg" >> $GITHUB_OUTPUT
 
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Ensure Resource Group exists
-        run: |
-          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
-          LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}"
-          if [ "$(az group exists --name "$RG" --output tsv)" == "false" ]; then
-            az group create --name "$RG" --location "$LOCATION" \
-              --tags Environment=${{ steps.env.outputs.name }} ManagedBy=github-actions
-            echo "Resource Group $RG creado"
-          else
-            echo "Resource Group $RG ya existe"
-          fi
+      - name: Create Resource Group via ARM
+        uses: azure/arm-deploy@v2
+        with:
+          deploymentScope: 'subscription'
+          template: src/infra-arm/resource-group/deploy.json
+          parameters: >
+            resourceGroupName=${{ steps.env.outputs.rg_name }}
+            location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}
+            environmentName=${{ steps.env.outputs.env_name }}
+          deploymentMode: Incremental
+          name: rg-az-rapidgo-${{ steps.env.outputs.env_name }}
+
+  validate:
+    name: Validate ARM Templates
+    runs-on: ubuntu-latest
+    needs: [create-rg]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Validate main.json
         uses: azure/arm-deploy@v2
         with:
-          resourceGroupName: az-rapidgo-${{ steps.env.outputs.name }}-rg
+          resourceGroupName: ${{ needs.create-rg.outputs.rg_name }}
           template: src/infra-arm/main.json
           parameters: src/infra-arm/azuredeploy.parameters.json
           deploymentMode: Validate
@@ -71,7 +83,7 @@ jobs:
   deploy:
     name: Deploy Infrastructure to Azure
     runs-on: ubuntu-latest
-    needs: [validate]
+    needs: [validate, create-rg]
     if: >
       (github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'yes')
@@ -79,51 +91,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set environment name
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "name=${{ github.event.inputs.environmentName }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
-            echo "name=dev" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "name=dev" >> $GITHUB_OUTPUT
-          else
-            echo "name=dev" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Mark RG as created by this run
-        id: rg
-        run: |
-          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
-          if [ "$(az group exists --name "$RG" --output tsv)" == "true" ]; then
-            echo "was_created=false" >> $GITHUB_OUTPUT
-          else
-            echo "was_created=true" >> $GITHUB_OUTPUT
-          fi
-
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Create Resource Group
-        run: |
-          az group create \
-            --name az-rapidgo-${{ steps.env.outputs.name }}-rg \
-            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }} \
-            --tags Environment=${{ steps.env.outputs.name }} ManagedBy=github-actions
 
       - name: Deploy ARM Template
         id: deploy
         uses: azure/arm-deploy@v2
         timeout-minutes: 30
         with:
-          resourceGroupName: az-rapidgo-${{ steps.env.outputs.name }}-rg
+          resourceGroupName: ${{ needs.create-rg.outputs.rg_name }}
           template: src/infra-arm/main.json
-          deploymentName: ${{ env.ARM_DEPLOYMENT_NAME }}-${{ steps.env.outputs.name }}
+          deploymentName: arm-rapidgo-${{ needs.create-rg.outputs.env_name }}
           parameters: >
-            environmentName=${{ steps.env.outputs.name }}
+            environmentName=${{ needs.create-rg.outputs.env_name }}
             location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}
             functionAppRuntime=node
             cosmosDBFreeTier=true
@@ -140,9 +122,9 @@ jobs:
             PROJECT_ID=$(echo "$SA_JSON" | jq -r '.project_id')
 
             SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-            RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
-            NS="az-rapidgo-${{ steps.env.outputs.name }}-notif-ns"
-            HUB="az-rapidgo-${{ steps.env.outputs.name }}-notifications"
+            RG="${{ needs.create-rg.outputs.rg_name }}"
+            NS="az-rapidgo-${{ needs.create-rg.outputs.env_name }}-notif-ns"
+            HUB="az-rapidgo-${{ needs.create-rg.outputs.env_name }}-notifications"
 
             az rest --method put \
               --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RG}/providers/Microsoft.NotificationHubs/namespaces/${NS}/notificationHubs/${HUB}/pnsCredentials?api-version=2023-01-01-preview" \
@@ -166,11 +148,11 @@ jobs:
       - name: Rollback on failure
         if: failure()
         run: |
-          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
+          RG="${{ needs.create-rg.outputs.rg_name }}"
           echo "## Fallo en el despliegue de infraestructura" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Causas posibles" >> $GITHUB_STEP_SUMMARY
-          echo "- Cuota de suscucion insuficiente (Cosmos DB free tier ya usado en otra suscripcion)" >> $GITHUB_STEP_SUMMARY
+          echo "- Cuota de suscripcion insuficiente (Cosmos DB free tier ya usado)" >> $GITHUB_STEP_SUMMARY
           echo "- Nombre de recurso duplicado (Key Vault, Storage Account son globales)" >> $GITHUB_STEP_SUMMARY
           echo "- Error de permisos del Service Principal" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -180,16 +162,16 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> El deployment ARM usa modo Incremental: los recursos creados antes del fallo" >> $GITHUB_STEP_SUMMARY
-          echo "> fueron revertidos automaticamente por Azure. Si el RG se creo en este mismo" >> $GITHUB_STEP_SUMMARY
-          echo "> workflow, el comando anterior lo eliminara por completo." >> $GITHUB_STEP_SUMMARY
+          echo "> fueron revertidos automaticamente por Azure. Solo es necesario eliminar el RG" >> $GITHUB_STEP_SUMMARY
+          echo "> si quieres limpiar por completo." >> $GITHUB_STEP_SUMMARY
 
       - name: Deployment Summary
         if: success()
         run: |
           {
             echo "## Infraestructura Desplegada"
-            echo "- Entorno: **${{ steps.env.outputs.name }}**"
-            echo "- Grupo de recursos: **az-rapidgo-${{ steps.env.outputs.name }}-rg**"
+            echo "- Entorno: **${{ needs.create-rg.outputs.env_name }}**"
+            echo "- Grupo de recursos: **${{ needs.create-rg.outputs.rg_name }}**"
             echo "- Function App: \`${{ steps.deploy.outputs.functionAppDefaultHostName }}\`"
             echo "- API Management: \`${{ steps.deploy.outputs.apimGatewayUrl }}\`"
             echo "- Cosmos DB: \`${{ steps.deploy.outputs.cosmosDbEndpoint }}\`"
