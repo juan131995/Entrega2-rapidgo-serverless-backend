@@ -51,14 +51,15 @@ jobs:
       - name: Create Resource Group via ARM
         uses: azure/arm-deploy@v2
         with:
-          deploymentScope: 'subscription'
+          scope: 'subscription'
+          region: 'brazilsouth'
           template: src/infra-arm/resource-group/deploy.json
           parameters: >
             resourceGroupName=${{ steps.env.outputs.rg_name }}
             location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}
             environmentName=${{ steps.env.outputs.env_name }}
           deploymentMode: Incremental
-          name: rg-az-rapidgo-${{ steps.env.outputs.env_name }}
+          deploymentName: rg-az-rapidgo-${{ steps.env.outputs.env_name }}
 
   validate:
     name: Validate ARM Templates
