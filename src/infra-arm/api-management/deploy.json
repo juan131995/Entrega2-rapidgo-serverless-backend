@@ -1,0 +1,97 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "apimName": { "type": "string" },
+    "publisherName": { "type": "string", "defaultValue": "RapidGo Team" },
+    "publisherEmail": { "type": "string", "defaultValue": "team@rapidgo.app" },
+    "sku": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": ["Developer", "Basic", "Standard"]
+    },
+    "location": { "type": "string" },
+    "environmentName": { "type": "string" },
+    "functionAppUrl": { "type": "string", "defaultValue": "" }
+  },
+  "variables": {
+    "skuCapacity": {
+      "Developer": 1,
+      "Basic": 1,
+      "Standard": 1
+    },
+    "apimVersion": "2023-05-01-preview"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[parameters('apimName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('sku')]",
+        "capacity": "[variables('skuCapacity')[parameters('sku')]]"
+      },
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "publisherName": "[parameters('publisherName')]",
+        "publisherEmail": "[parameters('publisherEmail')]",
+        "notificationSenderEmail": "noreply@rapidgo.app",
+        "hostnameConfigurations": [],
+        "virtualNetworkType": "None",
+        "disableGateway": false,
+        "apiVersionConstraint": {
+          "minApiVersion": "2019-01-01"
+        },
+        "restore": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'rapidgo-api')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "RapidGo API",
+        "description": "API principal para la plataforma de domicilios RapidGo",
+        "serviceUrl": "[if(empty(parameters('functionAppUrl')), format('https://{0}.azurewebsites.net', parameters('apimName')), format('https://{0}', parameters('functionAppUrl')))]",
+        "path": "api",
+        "protocols": ["https"],
+        "apiVersion": "v1",
+        "apiRevision": "1",
+        "subscriptionRequired": true,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null
+        }
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/policies",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/{1}', parameters('apimName'), 'policy')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimName'))]"
+      ],
+      "properties": {
+        "value": "[concat('<policies><inbound><base /><rate-limit calls=\"500\" renewal-period=\"60\" /><jwt-validate header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Token JWT inválido o expirado\"><openid-config url=\"https://rapidgo.auth0.com/.well-known/openid-configuration\" /></jwt-validate></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>')]",
+        "format": "xml"
+      }
+    }
+  ],
+  "outputs": {
+    "gatewayUrl": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apimName'))).gatewayUrl]"
+    },
+    "apimId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service', parameters('apimName'))]"
+    }
+  }
+}

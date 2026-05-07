@@ -1,0 +1,108 @@
+name: Deploy Infrastructure - ARM Templates
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/infra-arm/**'
+  workflow_dispatch:
+    inputs:
+      environmentName:
+        description: 'Environment name (dev, nonprod, prod)'
+        required: true
+        default: 'dev'
+      location:
+        description: 'Azure region'
+        required: true
+        default: 'brazilsouth'
+      confirm:
+        description: 'Type "yes" to confirm deployment'
+        required: true
+        default: 'no'
+
+jobs:
+  validate:
+    name: Validate ARM Templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate main.json
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: az-rapidgo-dev-rg
+          template: src/infra-arm/main.json
+          parameters: src/infra-arm/azuredeploy.parameters.json
+          deploymentMode: Validate
+
+  deploy:
+    name: Deploy Infrastructure to Azure
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'yes')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment name
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.environmentName }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            echo "name=dev" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "name=dev" >> $GITHUB_OUTPUT
+          else
+            echo "name=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name az-rapidgo-${{ steps.env.outputs.name }}-rg \
+            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }} \
+            --tags Environment=${{ steps.env.outputs.name }} ManagedBy=github-actions
+
+      - name: Deploy ARM Template
+        uses: azure/arm-deploy@v2
+        id: deploy
+        with:
+          resourceGroupName: az-rapidgo-${{ steps.env.outputs.name }}-rg
+          template: src/infra-arm/main.json
+          parameters: >
+            environmentName=${{ steps.env.outputs.name }}
+            location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}
+            functionAppRuntime=node
+            cosmosDBFreeTier=true
+            skuAPIM=Developer
+            notificationHubFcmApiKey=${{ secrets.FCM_API_KEY }}
+          deploymentMode: Incremental
+
+      - name: Deployment Summary
+        run: |
+          {
+            echo "## Infraestructura Desplegada"
+            echo "- Entorno: **${{ steps.env.outputs.name }}**"
+            echo "- Grupo de recursos: **az-rapidgo-${{ steps.env.outputs.name }}-rg**"
+            echo "- Function App: \`${{ steps.deploy.outputs.functionAppDefaultHostName }}\`"
+            echo "- API Management: \`${{ steps.deploy.outputs.apimGatewayUrl }}\`"
+            echo "- Cosmos DB: \`${{ steps.deploy.outputs.cosmosDbEndpoint }}\`"
+            echo "- Blob Storage: \`${{ steps.deploy.outputs.blobStorageEndpoint }}\`"
+            echo "- Notification Hubs: \`${{ steps.deploy.outputs.notificationHubEndpoint }}\`"
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        run: az logout

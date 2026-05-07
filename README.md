@@ -61,20 +61,6 @@ Se integra con Firebase Cloud Messaging (FCM) para dispositivos Android y con Ap
 
 ---
 
-## Objetivos de Arquitectura
-
-| Objetivo | Descripción |
-|---|---|
-| Escalabilidad | El sistema escala horizontalmente de forma automática para absorber picos de demanda sin degradación del servicio. |
-| Alta disponibilidad | Los servicios administrados de Azure garantizan SLAs de disponibilidad y continuidad del servicio frente a fallos. |
-| Baja latencia | Cosmos DB ofrece tiempos de respuesta de milisegundos de un solo dígito para operaciones de lectura y escritura. |
-| Zero-downtime deployment | El modelo serverless permite desplegar nuevas versiones de funciones sin interrumpir el servicio activo. |
-| Push notifications en tiempo real | La integración de Notification Hubs con FCM y APNs garantiza la entrega inmediata de notificaciones a los dispositivos. |
-| Optimización de costos | El modelo de pago por uso de Azure Functions elimina el costo de infraestructura ociosa, ajustando el gasto al consumo real. |
-| Baja carga operativa | Al eliminar la administración de servidores, el equipo puede concentrarse en el desarrollo de funcionalidades de negocio. |
-
----
-
 ## Modelo C4
 
 El modelo C4 representa la arquitectura del sistema en cuatro niveles de abstracción, facilitando la comunicación entre los equipos técnicos y de negocio.
@@ -83,34 +69,19 @@ El modelo C4 representa la arquitectura del sistema en cuatro niveles de abstrac
 
 Interacción del sistema RapidGo con los actores principales (cliente, repartidor, administrador) y servicios externos (React Native, FCM, APNs, pasarela de pagos).
 
-![Diagrama de Contexto C1](assets/c1-contexto.png)
+![Diagrama de Contexto C1](assets/Diagramas/c1-contexto.png)
 
 ### C2 – Diagrama de Contenedores
 
 Componentes principales de la arquitectura: API Management, Azure Functions, Cosmos DB, Blob Storage y Notification Hubs.
 
-![Diagrama de Contenedores C2](assets/c2-contenedores.png)
+![Diagrama de Contenedores C2](assets/Diagramas/c2-contenedores.png)
 
 ### C3 – Diagrama de Componentes
 
 Descomposición interna de la capa de lógica de negocio, mostrando las funciones implementadas y sus relaciones.
 
-![Diagrama de Componentes C3](assets/c3-componentes.png)
-
----
-
-## Flujo de Negocio
-
-El flujo principal del sistema es el registro y seguimiento de pedidos:
-
-1. El cliente envía una solicitud de creación de pedido desde la aplicación React Native.
-2. La solicitud ingresa a través de Azure API Management, que aplica políticas de seguridad y validación.
-3. API Management enruta la petición a la Azure Function `registrarPedido`.
-4. La función procesa la solicitud, aplica las reglas de negocio y persiste el pedido en Cosmos DB.
-5. Cuando el estado del pedido cambia, la función `actualizarEstadoPedido` actualiza el registro en Cosmos DB.
-6. El sistema envía una notificación push al cliente mediante Notification Hubs, utilizando FCM o APNs según la plataforma del dispositivo.
-
-![Flujo de registro de pedido](assets/flujo-pedido.png)
+![Diagrama de Componentes C3](assets/Diagramas/c3-componentes.png)
 
 ---
 
@@ -132,73 +103,14 @@ El flujo principal del sistema es el registro y seguimiento de pedidos:
 
 ## Decisiones Arquitectónicas (ADR)
 
-### ADR 001 — Azure Functions como plataforma de ejecución
+Las decisiones arquitectónicas fundamentales se documentan en archivos individuales dentro de [`assets/ADRS/`](assets/ADRS/). Cada ADR incluye el contexto, las alternativas evaluadas, la decisión adoptada y sus consecuencias.
 
-**Contexto**: se requiere una plataforma para ejecutar la lógica de negocio del backend sin administrar servidores.
+| # | Título | Archivo |
+|---|---|---|
+| ADR-001 | Uso de Azure Functions (Serverless) sobre Azure App Service | [`assets/ADRS/ADR 1.md`](assets/ADRS/ADR_1.md) |
+| ADR-002 | Cosmos DB como sistema de almacenamiento principal | [`assets/ADRS/ADR 2.md`](assets/ADRS/ADR_2.md) |
+| ADR-003 | API Management como gateway de entrada | [`assets/ADRS/ADR 3.md`](assets/ADRS/ADR_3.md) |
+| ADR-004 | Azure Blob Storage sobre Azure Files para almacenamiento | [`assets/ADRS/ADR 4.md`](assets/ADRS/ADR_4.md) |
+| ADR-005 | Azure Notification Hubs sobre Azure Communication Services | [`assets/ADRS/ADR 5.md`](assets/ADRS/ADR_5.md) |
 
-**Decisión**: se adopta Azure Functions por su modelo serverless, integración nativa con el ecosistema Azure, escalado automático y facturación por ejecución.
-
-**Consecuencias**: las funciones se despliegan de forma independiente, permitiendo actualizaciones y escalado por separado. La latencia de arranque en frío (cold start) debe considerarse en funciones críticas.
-
----
-
-### ADR 002 — Cosmos DB como sistema de almacenamiento principal
-
-**Contexto**: la plataforma necesita una base de datos flexible, con baja latencia y capaz de manejar documentos JSON con esquemas variables.
-
-**Decisión**: se selecciona Cosmos DB por su modelo NoSQL, latencias de milisegundos de un solo dígito, escalado elástico y SLAs de disponibilidad.
-
-**Consecuencias**: se adopta un modelo de datos basado en documentos JSON. Las consultas complejas con múltiples joins pueden requerir refactorización hacia un modelo desnormalizado.
-
----
-
-### ADR 003 — API Management como gateway de entrada
-
-**Contexto**: es necesario centralizar el acceso a las funciones del backend, aplicar políticas de seguridad y gestionar el tráfico.
-
-**Decisión**: se implementa Azure API Management como fachada única para todas las peticiones, proporcionando autenticación, rate limiting y transformación de mensajes.
-
-**Consecuencias**: toda solicitud pasa por API Management antes de alcanzar las funciones, lo que añade una capa de seguridad pero también una latencia mínima adicional.
-
----
-
-### ADR 004 — Blob Storage para almacenamiento de archivos
-
-**Contexto**: la plataforma requiere almacenar imágenes de productos, comprobantes de entrega y otros archivos no estructurados.
-
-**Decisión**: se utiliza Azure Blob Storage por su durabilidad, escalabilidad masiva y costos ajustables por nivel de acceso.
-
-**Consecuencias**: el acceso a los archivos se controla mediante SAS tokens, eliminando la necesidad de exponer las credenciales de almacenamiento.
-
----
-
-### ADR 005 — Notification Hubs para notificaciones push multiplataforma
-
-**Contexto**: el sistema debe enviar notificaciones push en tiempo real a dispositivos Android e iOS sin gestionar conexiones individuales.
-
-**Decisión**: se adopta Azure Notification Hubs como servicio centralizado que se integra con FCM y APNs, administrando el enrutamiento y la entrega de notificaciones.
-
-**Consecuencias**: la plataforma envía notificaciones desde un único punto, independientemente del sistema operativo del dispositivo destino.
-
----
-
-## Despliegue
-
-La infraestructura se aprovisiona mediante recursos de Azure:
-
-- **Azure Functions**: despliegue de las funciones desde el repositorio mediante publicación directa o integración con CI/CD.
-- **Azure API Management**: importación de la especificación OpenAPI para definir los endpoints y políticas.
-- **Azure Cosmos DB**: creación de la base de datos y colecciones con el rendimiento aprovisionado según la carga esperada.
-- **Azure Blob Storage**: configuración de contenedores públicos y privados con políticas de acceso.
-- **Azure Notification Hubs**: configuración de los hubs con las credenciales de FCM y APNs.
-
----
-
-## Pruebas
-
-Las pruebas de integración y validación de los endpoints se realizan mediante colecciones de Postman, verificando:
-
-- Creación, consulta y actualización de pedidos.
-- Envío de notificaciones push a dispositivos Android e iOS.
-- Respuesta de los servicios ante cargas de trabajo concurrentes.
-- Correcto funcionamiento de las políticas de seguridad en API Management.
+Cada archivo contiene la evaluación técnica completa con tabla de puntuación por requerimiento no funcional y justificación detallada.

@@ -1,1 +1,13 @@
-
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "COSMOS_DB_CONNECTION_STRING": "",
+    "COSMOS_DB_NAME": "az-rapidgo-dev-db",
+    "COSMOS_DB_CONTAINER": "pedidos",
+    "NOTIFICATION_HUB_CONNECTION_STRING": "",
+    "NOTIFICATION_HUB_NAME": "az-rapidgo-dev-notifications",
+    "FCM_API_KEY": ""
+  }
+}
