@@ -1,161 +1,204 @@
-# Entrega 2 – RapidGo Serverless Backend
+# RapidGo Serverless Backend
 
-## Arquitectura Cloud en Microsoft Azure
+Plataforma colombiana de domicilios con backend serverless en Microsoft Azure. Conecta clientes, repartidores y comercios locales mediante una arquitectura orientada a eventos, escalable automáticamente y optimizada para notificaciones push en tiempo real.
 
-Curso: Computación en la Nube
-Institución: Tecnológico de Antioquia – Institución Universitaria
-Profesor: Julian David Florez Sanchez
+---
 
-Integrantes del grupo
+## Arquitectura Cloud
 
-* Alejandro Guzman
-* Juan Pablo
-* Juan Carlos Montiel
-* Estudiante 4
-* Estudiante 5
+La solución se fundamenta en una arquitectura serverless nativa de Azure. Las funciones del backend se ejecutan bajo demanda mediante servicios administrados, eliminando la gestión manual de servidores y adaptando la capacidad del sistema a la carga de trabajo en tiempo real.
 
-Fecha de entrega: 14 de mayo de 2026
+Principios arquitectónicos:
 
-## 1. Introducción
+- **Arquitectura orientada a eventos**: cada operación del sistema (registro de pedido, cambio de estado, notificación) se modela como un evento que dispara funciones específicas.
+- **Escalabilidad automática**: Azure Functions escala horizontalmente según el volumen de solicitudes sin intervención manual.
+- **Pago por uso**: solo se facturan los recursos consumidos durante la ejecución, eliminando costos fijos de infraestructura ociosa.
+- **Alta disponibilidad**: los servicios administrados de Azure garantizan SLAs de disponibilidad y replicación geográfica opcional.
+- **Desacoplamiento de servicios**: cada componente del sistema es independiente, permitiendo desarrollar, desplegar y escalar cada uno por separado.
+- **Backend serverless**: la lógica de negocio se implementa mediante Azure Functions, eliminando la necesidad de aprovisionar o mantener servidores.
 
-RapidGo es una empresa colombiana que ofrece servicios de domicilios mediante una aplicación móvil que conecta a los clientes con restaurantes y tiendas locales. La aplicación fue desarrollada utilizando React Native y actualmente opera en ciudades como Medellín, Manizales y Pereira.
+---
 
-La versión actual del sistema utiliza una arquitectura monolítica desarrollada con Node.js y desplegada en un servidor dedicado. Este enfoque ha generado algunas limitaciones importantes, especialmente en aspectos como la escalabilidad del sistema, los costos de infraestructura y la disponibilidad del servicio cuando aumenta el número de usuarios.
+## Arquitectura de Solución
 
-Por esta razón, en este proyecto se propone el diseño de una arquitectura basada en servicios **serverless utilizando Microsoft Azure**, con el objetivo de mejorar la escalabilidad, reducir los costos operativos y aumentar la disponibilidad del sistema.
+### Azure Functions
 
-## 2. Arquitectura Propuesta
+**Propósito**: ejecutar la lógica de negocio del sistema en un entorno serverless.
 
-La solución propuesta se basa en el uso de una arquitectura serverless. En este modelo, las funciones del backend se ejecutan bajo demanda utilizando servicios administrados en la nube, lo que elimina la necesidad de administrar servidores manualmente.
+Las funciones implementan los casos de uso principales como `registrarPedido`, `actualizarEstadoPedido`, `consultarHistorialPedidos` y `enviarNotificacionCliente`. Cada función se activa mediante peticiones HTTP a través de API Management o mediante cambios en los datos.
 
-Para la implementación se consideran los siguientes servicios de Azure:
+**Beneficios técnicos**: escalado automático, aislamiento por función, integración nativa con el ecosistema Azure y facturación por ejecución.
 
-* Azure Functions para ejecutar la lógica del sistema
-* API Management como punto de acceso a la API
-* Cosmos DB para el almacenamiento de datos NoSQL
-* Blob Storage para almacenar archivos
-* Notification Hubs para el envío de notificaciones push a los usuarios
+### Azure API Management
 
-Con este enfoque, la plataforma puede escalar automáticamente según el número de solicitudes que reciba la aplicación.
+**Propósito**: actuar como punto de entrada único para todas las solicitudes de la aplicación móvil.
 
-## 3. Modelo C4
+Gestiona el enrutamiento, la autenticación, el rate limiting y la transformación de peticiones antes de que lleguen a las Azure Functions. Expone una fachada REST consistente hacia los clientes.
 
-El modelo C4 permite representar la arquitectura del sistema en diferentes niveles de detalle para facilitar su comprensión.
+**Beneficios técnicos**: seguridad centralizada, control de tráfico, documentación interactiva de la API y compatibilidad con políticas de transformación.
+
+### Azure Cosmos DB
+
+**Propósito**: almacenar y consultar los datos de la plataforma (pedidos, usuarios, comercios) con baja latencia.
+
+Se utiliza como base de datos NoSQL con modelo de datos flexible, ideal para los documentos JSON que maneja la aplicación.
+
+**Beneficios técnicos**: latencias de milisegundos de un solo dígito, distribución global multi-región, escalado elástico del rendimiento y SLAs integrales.
+
+### Azure Blob Storage
+
+**Propósito**: almacenar archivos no estructurados como imágenes de productos, comprobantes de entrega y recursos estáticos de la plataforma.
+
+**Beneficios técnicos**: almacenamiento durable y redundante, escalabilidad masiva, acceso seguro mediante SAS tokens y costos optimizados por nivel de acceso.
+
+### Azure Notification Hubs
+
+**Propósito**: gestionar el envío de notificaciones push a los dispositivos móviles de clientes y repartidores.
+
+Se integra con Firebase Cloud Messaging (FCM) para dispositivos Android y con Apple Push Notification Service (APNs) para iOS, permitiendo un único punto de administración para todas las notificaciones.
+
+**Beneficios técnicos**: envío masivo escalable, soporte multiplataforma (FCM, APNs), personalización por etiqueta y segmentación de audiencias.
+
+---
+
+## Objetivos de Arquitectura
+
+| Objetivo | Descripción |
+|---|---|
+| Escalabilidad | El sistema escala horizontalmente de forma automática para absorber picos de demanda sin degradación del servicio. |
+| Alta disponibilidad | Los servicios administrados de Azure garantizan SLAs de disponibilidad y continuidad del servicio frente a fallos. |
+| Baja latencia | Cosmos DB ofrece tiempos de respuesta de milisegundos de un solo dígito para operaciones de lectura y escritura. |
+| Zero-downtime deployment | El modelo serverless permite desplegar nuevas versiones de funciones sin interrumpir el servicio activo. |
+| Push notifications en tiempo real | La integración de Notification Hubs con FCM y APNs garantiza la entrega inmediata de notificaciones a los dispositivos. |
+| Optimización de costos | El modelo de pago por uso de Azure Functions elimina el costo de infraestructura ociosa, ajustando el gasto al consumo real. |
+| Baja carga operativa | Al eliminar la administración de servidores, el equipo puede concentrarse en el desarrollo de funcionalidades de negocio. |
+
+---
+
+## Modelo C4
+
+El modelo C4 representa la arquitectura del sistema en cuatro niveles de abstracción, facilitando la comunicación entre los equipos técnicos y de negocio.
 
 ### C1 – Diagrama de Contexto
 
-Este diagrama muestra cómo interactúa el sistema RapidGo con los actores principales y con otros servicios externos.
+Interacción del sistema RapidGo con los actores principales (cliente, repartidor, administrador) y servicios externos (React Native, FCM, APNs, pasarela de pagos).
 
-Actores del sistema
-
-* Cliente
-* Repartidor
-* Administrador
-
-Servicios externos
-
-* Aplicación móvil desarrollada en React Native
-* Firebase Cloud Messaging
-* Apple Push Notification Service
-* Pasarela de pagos
-
-![Diagrama C1](assets/c1-contexto.png)
+![Diagrama de Contexto C1](assets/c1-contexto.png)
 
 ### C2 – Diagrama de Contenedores
 
-En este nivel se muestran los contenedores principales que forman parte de la arquitectura del sistema.
+Componentes principales de la arquitectura: API Management, Azure Functions, Cosmos DB, Blob Storage y Notification Hubs.
 
-Entre los componentes principales se encuentran:
-
-* API Management
-* Azure Functions
-* Cosmos DB
-* Blob Storage
-* Notification Hubs
-
-![Diagrama C2](assets/c2-contenedores.png)
+![Diagrama de Contenedores C2](assets/c2-contenedores.png)
 
 ### C3 – Diagrama de Componentes
 
-El diagrama de componentes describe los elementos internos que forman parte de la capa de lógica de negocio.
+Descomposición interna de la capa de lógica de negocio, mostrando las funciones implementadas y sus relaciones.
 
-Funciones principales implementadas
+![Diagrama de Componentes C3](assets/c3-componentes.png)
 
-* registrarPedido
-* actualizarEstadoPedido
-* consultarHistorialPedidos
-* enviarNotificacionCliente
+---
 
-![Diagrama C3](assets/c3-componentes.png)
+## Flujo de Negocio
 
-## 4. Decisiones Arquitectónicas (ADR)
+El flujo principal del sistema es el registro y seguimiento de pedidos:
 
-### ADR 01 – Uso de Azure Functions
-
-Se decidió utilizar Azure Functions para implementar la lógica del backend debido a que permite trabajar bajo un modelo serverless, lo cual facilita la escalabilidad automática y reduce la administración de infraestructura.
-
-### ADR 02 – Uso de Cosmos DB
-
-Cosmos DB fue seleccionada como base de datos principal porque permite manejar grandes volúmenes de datos con baja latencia y ofrece un modelo flexible de almacenamiento NoSQL.
-
-### ADR 03 – Uso de API Management
-
-API Management funciona como un punto de entrada para todas las solicitudes de la aplicación, permitiendo controlar el acceso, aplicar seguridad y administrar el tráfico de la API.
-
-### ADR 04 – Uso de Blob Storage
-
-Blob Storage se utiliza para almacenar archivos como imágenes de productos, comprobantes de entrega y otros recursos que requiere la plataforma.
-
-### ADR 05 – Uso de Notification Hubs
-
-Notification Hubs permite enviar notificaciones a dispositivos móviles Android y iOS utilizando servicios como Firebase Cloud Messaging y Apple Push Notification Service.
-
-## 5. Implementación
-
-El flujo principal del sistema se centra en el proceso de registro de pedidos desde la aplicación móvil.
-
-### Proceso general
-
-1. El cliente envía una solicitud para crear un pedido desde la aplicación móvil.
-2. La solicitud llega al servicio de API Management.
-3. API Management redirige la petición a una Azure Function llamada **registrarPedido**.
-4. La función procesa la solicitud y almacena la información del pedido en **Cosmos DB**.
-5. Cuando el estado del pedido cambia, se ejecuta una función llamada **actualizarEstado** que modifica la información del pedido.
-6. Finalmente, el sistema envía una notificación al cliente utilizando **Notification Hubs**.
-
-Las pruebas de los servicios se realizaron utilizando la herramienta **Postman**, permitiendo verificar el correcto funcionamiento de los endpoints y la comunicación entre los servicios del sistema.
-
-### Flujo del registro de pedido
+1. El cliente envía una solicitud de creación de pedido desde la aplicación React Native.
+2. La solicitud ingresa a través de Azure API Management, que aplica políticas de seguridad y validación.
+3. API Management enruta la petición a la Azure Function `registrarPedido`.
+4. La función procesa la solicitud, aplica las reglas de negocio y persiste el pedido en Cosmos DB.
+5. Cuando el estado del pedido cambia, la función `actualizarEstadoPedido` actualiza el registro en Cosmos DB.
+6. El sistema envía una notificación push al cliente mediante Notification Hubs, utilizando FCM o APNs según la plataforma del dispositivo.
 
 ![Flujo de registro de pedido](assets/flujo-pedido.png)
 
+---
 
-## 6. Evidencias
+## Stack Tecnológico
 
-A continuación se presentan algunas capturas de pantalla que muestran el funcionamiento del sistema en el entorno de Azure.
+| Capa | Tecnología |
+|---|---|
+| Backend serverless | Azure Functions (Node.js) |
+| API Gateway | Azure API Management |
+| Base de datos | Azure Cosmos DB (NoSQL) |
+| Almacenamiento de archivos | Azure Blob Storage |
+| Notificaciones push | Azure Notification Hubs |
+| Cliente móvil | React Native |
+| Push Android | Firebase Cloud Messaging (FCM) |
+| Push iOS | Apple Push Notification Service (APNs) |
+| Pruebas de API | Postman |
 
-Recursos creados en Azure
+---
 
-![Azure Resources](assets/azure-recursos.png)
+## Decisiones Arquitectónicas (ADR)
 
-Ejecución de funciones
+### ADR 001 — Azure Functions como plataforma de ejecución
 
-![Functions Logs](assets/function-logs.png)
+**Contexto**: se requiere una plataforma para ejecutar la lógica de negocio del backend sin administrar servidores.
 
-Registro de pedidos en Cosmos DB
+**Decisión**: se adopta Azure Functions por su modelo serverless, integración nativa con el ecosistema Azure, escalado automático y facturación por ejecución.
 
-![Cosmos DB](assets/cosmosdb-pedido.png)
+**Consecuencias**: las funciones se despliegan de forma independiente, permitiendo actualizaciones y escalado por separado. La latencia de arranque en frío (cold start) debe considerarse en funciones críticas.
 
-Notificación enviada al cliente
+---
 
-![Notification Hub](assets/notification-hub.png)
+### ADR 002 — Cosmos DB como sistema de almacenamiento principal
 
-## 7. Conclusiones
+**Contexto**: la plataforma necesita una base de datos flexible, con baja latencia y capaz de manejar documentos JSON con esquemas variables.
 
-La propuesta de una arquitectura serverless en Microsoft Azure permite mejorar significativamente el funcionamiento del sistema RapidGo en comparación con la arquitectura monolítica original.
+**Decisión**: se selecciona Cosmos DB por su modelo NoSQL, latencias de milisegundos de un solo dígito, escalado elástico y SLAs de disponibilidad.
 
-Entre los beneficios más importantes se encuentran la escalabilidad automática del sistema, la reducción de costos operativos y la mejora en la disponibilidad de la plataforma.
+**Consecuencias**: se adopta un modelo de datos basado en documentos JSON. Las consultas complejas con múltiples joins pueden requerir refactorización hacia un modelo desnormalizado.
 
-Además, el uso del modelo C4 permitió representar la arquitectura del sistema de manera clara, facilitando la comprensión de sus componentes y de la forma en que interactúan entre sí.
+---
 
-Como trabajo futuro, sería posible integrar herramientas de monitoreo como Azure Monitor y Application Insights para mejorar el seguimiento y análisis del rendimiento del sistema.
+### ADR 003 — API Management como gateway de entrada
+
+**Contexto**: es necesario centralizar el acceso a las funciones del backend, aplicar políticas de seguridad y gestionar el tráfico.
+
+**Decisión**: se implementa Azure API Management como fachada única para todas las peticiones, proporcionando autenticación, rate limiting y transformación de mensajes.
+
+**Consecuencias**: toda solicitud pasa por API Management antes de alcanzar las funciones, lo que añade una capa de seguridad pero también una latencia mínima adicional.
+
+---
+
+### ADR 004 — Blob Storage para almacenamiento de archivos
+
+**Contexto**: la plataforma requiere almacenar imágenes de productos, comprobantes de entrega y otros archivos no estructurados.
+
+**Decisión**: se utiliza Azure Blob Storage por su durabilidad, escalabilidad masiva y costos ajustables por nivel de acceso.
+
+**Consecuencias**: el acceso a los archivos se controla mediante SAS tokens, eliminando la necesidad de exponer las credenciales de almacenamiento.
+
+---
+
+### ADR 005 — Notification Hubs para notificaciones push multiplataforma
+
+**Contexto**: el sistema debe enviar notificaciones push en tiempo real a dispositivos Android e iOS sin gestionar conexiones individuales.
+
+**Decisión**: se adopta Azure Notification Hubs como servicio centralizado que se integra con FCM y APNs, administrando el enrutamiento y la entrega de notificaciones.
+
+**Consecuencias**: la plataforma envía notificaciones desde un único punto, independientemente del sistema operativo del dispositivo destino.
+
+---
+
+## Despliegue
+
+La infraestructura se aprovisiona mediante recursos de Azure:
+
+- **Azure Functions**: despliegue de las funciones desde el repositorio mediante publicación directa o integración con CI/CD.
+- **Azure API Management**: importación de la especificación OpenAPI para definir los endpoints y políticas.
+- **Azure Cosmos DB**: creación de la base de datos y colecciones con el rendimiento aprovisionado según la carga esperada.
+- **Azure Blob Storage**: configuración de contenedores públicos y privados con políticas de acceso.
+- **Azure Notification Hubs**: configuración de los hubs con las credenciales de FCM y APNs.
+
+---
+
+## Pruebas
+
+Las pruebas de integración y validación de los endpoints se realizan mediante colecciones de Postman, verificando:
+
+- Creación, consulta y actualización de pedidos.
+- Envío de notificaciones push a dispositivos Android e iOS.
+- Respuesta de los servicios ante cargas de trabajo concurrentes.
+- Correcto funcionamiento de las políticas de seguridad en API Management.
