@@ -5,13 +5,6 @@
     "namespaceName": { "type": "string" },
     "hubName": { "type": "string" },
     "location": { "type": "string" },
-    "fcmApiKey": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Firebase Cloud Messaging server key for Android push notifications"
-      }
-    },
     "environmentName": { "type": "string" }
   },
   "variables": {
@@ -50,7 +43,6 @@
       }
     },
     {
-      "condition": "[not(empty(parameters('fcmApiKey')))]",
       "type": "Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules",
       "apiVersion": "[variables('nhVersion')]",
       "name": "[format('{0}/{1}/{2}', parameters('namespaceName'), parameters('hubName'), 'DefaultFullSharedAccessSignature')]",

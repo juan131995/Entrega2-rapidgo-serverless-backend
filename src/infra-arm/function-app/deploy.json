@@ -13,8 +13,7 @@
     "environmentName": { "type": "string" },
     "keyVaultUri": { "type": "string" },
     "cosmosDatabaseName": { "type": "string" },
-    "cosmosContainerName": { "type": "string" },
-    "fcmApiKey": { "type": "string", "defaultValue": "" }
+    "cosmosContainerName": { "type": "string" }
   },
   "variables": {
     "appInsightsName": "[concat(parameters('functionAppName'), '-insights')]",
@@ -101,7 +100,6 @@
             { "name": "NOTIFICATION_HUB_CONNECTION_STRING", "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/notification-hub-connection-string/)', parameters('keyVaultUri'))]" },
             { "name": "NOTIFICATION_HUB_NAME", "value": "[concat('az-rapidgo-', parameters('environmentName'), '-notifications')]" },
             { "name": "BLOB_STORAGE_CONNECTION_STRING", "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/blob-storage-connection-string/)', parameters('keyVaultUri'))]" },
-            { "name": "FCM_API_KEY", "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/fcm-api-key/)', parameters('keyVaultUri'))]" },
             { "name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1" },
             { "name": "WEBSITE_NODE_DEFAULT_VERSION", "value": "~18" }
           ],

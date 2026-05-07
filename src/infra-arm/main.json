@@ -38,13 +38,6 @@
       "metadata": {
         "description": "API Management SKU (Developer tier for pilot)"
       }
-    },
-    "notificationHubFcmApiKey": {
-      "type": "securestring",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Firebase Cloud Messaging server key for Android push notifications"
-      }
     }
   },
   "variables": {
@@ -115,7 +108,6 @@
           "namespaceName": { "value": "[variables('notificationHubNamespace')]" },
           "hubName": { "value": "[variables('notificationHubName')]" },
           "location": { "value": "[parameters('location')]" },
-          "fcmApiKey": { "value": "[parameters('notificationHubFcmApiKey')]" },
           "environmentName": { "value": "[parameters('environmentName')]" }
         }
       }
@@ -157,8 +149,7 @@
             "keyVaultName": { "type": "string" },
             "cosmosDbConnectionString": { "type": "string" },
             "blobStorageConnectionString": { "type": "string" },
-            "notificationHubConnectionString": { "type": "string" },
-            "fcmApiKey": { "type": "string" }
+            "notificationHubConnectionString": { "type": "string" }
           },
           "resources": [
             {
@@ -178,12 +169,6 @@
               "apiVersion": "2023-07-01",
               "name": "[format('{0}/notification-hub-connection-string', parameters('keyVaultName'))]",
               "properties": { "value": "[parameters('notificationHubConnectionString')]" }
-            },
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-07-01",
-              "name": "[format('{0}/fcm-api-key', parameters('keyVaultName'))]",
-              "properties": { "value": "[parameters('fcmApiKey')]" }
             }
           ]
         },
@@ -191,8 +176,7 @@
           "keyVaultName": { "value": "[variables('keyVaultName')]" },
           "cosmosDbConnectionString": { "value": "[reference('deployCosmosDB').outputs.connectionString.value]" },
           "blobStorageConnectionString": { "value": "[reference('deployBlobStorage').outputs.connectionString.value]" },
-          "notificationHubConnectionString": { "value": "[reference('deployNotificationHubs').outputs.connectionString.value]" },
-          "fcmApiKey": { "value": "[parameters('notificationHubFcmApiKey')]" }
+          "notificationHubConnectionString": { "value": "[reference('deployNotificationHubs').outputs.connectionString.value]" }
         }
       }
     },
@@ -221,8 +205,7 @@
           "environmentName": { "value": "[parameters('environmentName')]" },
           "keyVaultUri": { "value": "[reference('deployKeyVault').outputs.keyVaultUri.value]" },
           "cosmosDatabaseName": { "value": "[variables('cosmosDatabaseName')]" },
-          "cosmosContainerName": { "value": "[variables('cosmosContainerName')]" },
-          "fcmApiKey": { "value": "[parameters('notificationHubFcmApiKey')]" }
+          "cosmosContainerName": { "value": "[variables('cosmosContainerName')]" }
         }
       }
     },

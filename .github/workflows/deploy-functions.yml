@@ -51,21 +51,46 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy Functions to Azure
-        uses: Azure/functions-action@v1
         id: fa
+        uses: Azure/functions-action@v1
+        timeout-minutes: 10
         with:
           app-name: az-rapidgo-${{ steps.env.outputs.name }}-functions
           package: src/rapidgo-functions
           respect-pom-xml: false
           respect-funcignore: true
 
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          APP="az-rapidgo-${{ steps.env.outputs.name }}-functions"
+          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
+          echo "## Fallo en el despliegue de funciones" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Que paso?" >> $GITHUB_STEP_SUMMARY
+          echo "- El deployment de la Function App **$APP** fallo." >> $GITHUB_STEP_SUMMARY
+          echo "- La version anterior del codigo sigue activa (zip deployment es atomico)." >> $GITHUB_STEP_SUMMARY
+          echo "- No se requieren acciones de rollback." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Causas posibles" >> $GITHUB_STEP_SUMMARY
+          echo "- Error de compilacion o dependencias faltantes en package.json" >> $GITHUB_STEP_SUMMARY
+          echo "- La Function App no existe (ejecutar primero deploy-infra)" >> $GITHUB_STEP_SUMMARY
+          echo "- Problema de permisos del Service Principal sobre la Function App" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Para verificar el estado actual" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "az functionapp show --name $APP --resource-group $RG --query 'state' -o tsv" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
       - name: Deployment Summary
+        if: success()
         run: |
           echo "## Functions Desplegadas" >> $GITHUB_STEP_SUMMARY
           echo "- Entorno: ${{ steps.env.outputs.name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Function App: az-rapidgo-${{ steps.env.outputs.name }}-functions" >> $GITHUB_STEP_SUMMARY
           echo "- Funciones: registrarPedido, actualizarEstado, consultarHistorial, notificarCliente" >> $GITHUB_STEP_SUMMARY
-          echo "- Secretos: Azure Key Vault (cosmos-db, notification-hub, blob-storage, fcm-api-key)" >> $GITHUB_STEP_SUMMARY
+          echo "- Secretos: Azure Key Vault (cosmos-db, notification-hub, blob-storage)" >> $GITHUB_STEP_SUMMARY
 
       - name: Azure Logout
+        if: always()
         run: az logout
