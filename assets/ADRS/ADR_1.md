@@ -1,8 +1,5 @@
 # ADR 001: Uso de Azure Functions (Serverless) para la Lógica de Negocio
 
-## Título
-Uso de [Azure Functions (Serverless)](https://learn.microsoft.com/es-es/azure/azure-functions/functions-overview) sobre [Azure App Service](https://learn.microsoft.com/es-es/azure/app-service/overview) para la lógica de negocio de RapidGo.
-
 ## Contexto
 RapidGo enfrenta una fase piloto con un presupuesto limitado ($50 USD/mes) y un equipo de infraestructura de una sola persona. Se requiere una solución que minimice la carga operativa y escale según la demanda de pedidos sin necesidad de administrar servidores. Además, el equipo domina Python y Node.js, por lo que la solución debe soportar estos lenguajes de forma nativa.
 
