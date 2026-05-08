@@ -67,13 +67,12 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Validate main.json
-        uses: azure/arm-deploy@v2
-        with:
-          resourceGroupName: ${{ needs.create-rg.outputs.rg_name }}
-          template: src/infra-arm/main.json
-          parameters: src/infra-arm/azuredeploy.parameters.json
-          deploymentMode: Validate
+      - name: Validate main.yaml
+        run: |
+          az deployment group validate \
+            --resource-group ${{ needs.create-rg.outputs.rg_name }} \
+            --template-file src/infra-arm/main.yaml \
+            --parameters src/infra-arm/azuredeploy.parameters.yaml
 
   deploy:
     name: Deploy Infrastructure to Azure
@@ -93,19 +92,20 @@ jobs:
 
       - name: Deploy ARM Template
         id: deploy
-        uses: azure/arm-deploy@v2
         timeout-minutes: 30
-        with:
-          resourceGroupName: ${{ needs.create-rg.outputs.rg_name }}
-          template: src/infra-arm/main.json
-          deploymentName: arm-rapidgo-${{ needs.create-rg.outputs.env_name }}
-          parameters: >
-            environmentName=${{ needs.create-rg.outputs.env_name }}
-            location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }}
-            functionAppRuntime=node
-            cosmosDBFreeTier=true
-            skuAPIM=Developer
-          deploymentMode: Incremental
+        run: |
+          az deployment group create \
+            --resource-group ${{ needs.create-rg.outputs.rg_name }} \
+            --name arm-rapidgo-${{ needs.create-rg.outputs.env_name }} \
+            --template-file src/infra-arm/main.yaml \
+            --parameters src/infra-arm/azuredeploy.parameters.yaml \
+            --parameters environmentName=${{ needs.create-rg.outputs.env_name }} \
+            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }} \
+            --parameters functionAppRuntime=node \
+            --parameters cosmosDBFreeTier=true \
+            --parameters skuAPIM=Developer \
+            --mode Incremental \
+            --query properties.outputs
 
       - name: Configure FCM v1 on Notification Hub
         continue-on-error: true
@@ -167,11 +167,6 @@ jobs:
             echo "## Infraestructura Desplegada"
             echo "- Entorno: **${{ needs.create-rg.outputs.env_name }}**"
             echo "- Grupo de recursos: **${{ needs.create-rg.outputs.rg_name }}**"
-            echo "- Function App: \`${{ steps.deploy.outputs.functionAppDefaultHostName }}\`"
-            echo "- API Management: \`${{ steps.deploy.outputs.apimGatewayUrl }}\`"
-            echo "- Cosmos DB: \`${{ steps.deploy.outputs.cosmosDbEndpoint }}\`"
-            echo "- Blob Storage: \`${{ steps.deploy.outputs.blobStorageEndpoint }}\`"
-            echo "- Notification Hubs: \`${{ steps.deploy.outputs.notificationHubEndpoint }}\`"
           } >> $GITHUB_STEP_SUMMARY
 
       - name: Azure Logout

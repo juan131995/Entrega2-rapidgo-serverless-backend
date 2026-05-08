@@ -1,0 +1,68 @@
+$schema: https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#
+contentVersion: 1.0.0.0
+parameters:
+  storageAccountName:
+    type: string
+  containerName:
+    type: string
+  location:
+    type: string
+  environmentName:
+    type: string
+resources:
+- type: Microsoft.Storage/storageAccounts
+  apiVersion: '2023-01-01'
+  name: '[parameters(''storageAccountName'')]'
+  location: '[parameters(''location'')]'
+  sku:
+    name: Standard_LRS
+  kind: StorageV2
+  tags:
+    environment: '[parameters(''environmentName'')]'
+    managedBy: arm-template
+    purpose: RapidGo file storage
+  properties:
+    accessTier: Hot
+    supportsHttpsTrafficOnly: true
+    minimumTlsVersion: TLS1_2
+    allowBlobPublicAccess: false
+    networkAcls:
+      bypass: AzureServices
+      defaultAction: Allow
+      virtualNetworkRules: []
+      ipRules: []
+- type: Microsoft.Storage/storageAccounts/blobServices
+  apiVersion: '2023-01-01'
+  name: '[format(''{0}/{1}'', parameters(''storageAccountName''), ''default'')]'
+  dependsOn:
+  - '[resourceId(''Microsoft.Storage/storageAccounts'', parameters(''storageAccountName''))]'
+  properties:
+    cors:
+      corsRules: []
+    deleteRetentionPolicy:
+      enabled: true
+      days: 7
+    containerDeleteRetentionPolicy:
+      enabled: true
+      days: 7
+- type: Microsoft.Storage/storageAccounts/blobServices/containers
+  apiVersion: '2023-01-01'
+  name: '[format(''{0}/{1}/{2}'', parameters(''storageAccountName''), ''default'',
+    parameters(''containerName''))]'
+  dependsOn:
+  - '[resourceId(''Microsoft.Storage/storageAccounts/blobServices'', parameters(''storageAccountName''),
+    ''default'')]'
+  properties:
+    publicAccess: None
+outputs:
+  endpoint:
+    type: string
+    value: '[reference(resourceId(''Microsoft.Storage/storageAccounts'', parameters(''storageAccountName''))).primaryEndpoints.blob]'
+  connectionString:
+    type: string
+    value: '[format(''DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net'',
+      parameters(''storageAccountName''), listKeys(resourceId(''Microsoft.Storage/storageAccounts'',
+      parameters(''storageAccountName'')), ''2023-01-01'').keys[0].value)]'
+  containerName:
+    type: string
+    value: '[parameters(''containerName'')]'
