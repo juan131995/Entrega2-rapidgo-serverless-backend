@@ -2,32 +2,27 @@
 
 ## Contexto
 
-La aplicación móvil de **RapidGo** necesita enviar **notificaciones push en tiempo real** a los clientes cuando cambia el estado de un pedido:
+La aplicación móvil de RapidGo necesita enviar **notificaciones push en tiempo real** a los clientes cuando cambia el estado de un pedido, por ejemplo:
 
 - Pedido confirmado
+- Pedido en preparación
 - Pedido en camino
 - Pedido entregado
 
-Estas notificaciones deben llegar a dispositivos:
+Estas notificaciones deben enviarse a dispositivos móviles **Android e iOS** y deben funcionar incluso cuando la aplicación no esté abierta.
 
-- **Android**
-- **iOS**
+Las notificaciones push se entregan a través de servicios específicos de cada plataforma conocidos como **Platform Notification Systems**, como:
 
-El sistema actual presenta problemas de confiabilidad en la entrega de notificaciones, generando confusión en los clientes sobre el estado de sus pedidos.
+- Apple Push Notification Service (APNs)
+- Firebase Cloud Messaging (FCM)
 
-La nueva arquitectura **serverless en la nube** debe cumplir con los siguientes requerimientos:
+Estos sistemas mantienen la conexión con los dispositivos móviles y entregan los mensajes enviados desde el backend de la aplicación. :contentReference[oaicite:0]{index=0}
 
-- Alcanzar una **tasa de entrega superior al 95%**.
-- Integrarse con la aplicación móvil desarrollada en **React Native**.
-- Escalar automáticamente durante picos de demanda.
-- Integrarse con los servicios de notificación nativos de cada plataforma:
+Para resolver este problema se evaluaron tres servicios cloud capaces de manejar notificaciones y mensajería a gran escala:
 
-  - **[Firebase Cloud Messaging (FCM)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**
-  - **[Apple Push Notification Service (APNs)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**
-
-Dentro de la arquitectura de RapidGo, las notificaciones se enviarán cuando el backend detecte un **cambio en el estado del pedido**, con el objetivo de mejorar la **experiencia del usuario y la transparencia del servicio**.
-
-Para resolver este problema se evaluaron tres servicios cloud capaces de manejar **notificaciones push a gran escala**.
+- Azure Notification Hubs
+- Azure Communication Services
+- Amazon Simple Notification Service (SNS)
 
 ---
 
@@ -37,135 +32,147 @@ Para resolver este problema se evaluaron tres servicios cloud capaces de manejar
 
 # 1. Azure Notification Hubs
 
+Azure Notification Hubs es un servicio de Microsoft Azure diseñado específicamente para **enviar notificaciones push a dispositivos móviles desde cualquier backend**. :contentReference[oaicite:1]{index=1}
+
+El servicio proporciona una infraestructura escalable para enviar notificaciones a millones de dispositivos utilizando una única API. :contentReference[oaicite:2]{index=2}
+
 ## Ventajas
 
-- Servicio diseñado específicamente para **notificaciones push móviles** mediante integración directa con **[Platform Notification Services (PNS)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**.
+- Diseñado específicamente para **notificaciones push móviles multiplataforma**.  
+  https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview
 
-- Permite enviar notificaciones a aplicaciones **Android e iOS** utilizando:
+- Permite enviar notificaciones a múltiples plataformas utilizando servicios como:
 
-  - **[Firebase Cloud Messaging (FCM)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**
-  - **[Apple Push Notification Service (APNs)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**
+  - Apple Push Notification Service (APNs)
+  - Firebase Cloud Messaging (FCM)
 
-- Permite segmentar usuarios mediante **[tags o etiquetas dinámicas](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**, lo que facilita enviar notificaciones específicas como:
+  https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview
 
-  - notificaciones por usuario
-  - notificaciones por pedido
-  - notificaciones por región
+- Permite enviar notificaciones a **millones de dispositivos con baja latencia** mediante una sola llamada a la API.  
+  https://azure.microsoft.com/en-us/products/notification-hubs/
 
-- Permite escalar a **millones de dispositivos** sin necesidad de rediseñar la arquitectura.
+- Permite segmentar usuarios mediante **tags o etiquetas dinámicas**, lo que facilita enviar notificaciones personalizadas a grupos de usuarios.  
+  https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview
 
-- Puede integrarse fácilmente con **[Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/)** dentro de arquitecturas serverless.
+- Puede integrarse fácilmente con backend services como:
 
-- Ofrece seguridad mediante **[Shared Access Signature (SAS)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview)**.
+  - Azure Functions
+  - .NET
+  - Node.js
+  - Java
+
+  https://learn.microsoft.com/en-us/azure/notification-hubs/
 
 ## Desventajas
 
-- Depende de los servicios de notificación externos de las plataformas (**[PNS](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer)**).
+- La entrega final depende de los servicios de notificación de cada plataforma como APNs o FCM.  
+  https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview
 
-- La entrega final depende de la disponibilidad de:
-
-  - **[APNs](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer)**
-  - **[FCM](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer)**
-
-- Una vez enviada la notificación a estos servicios, **Azure pierde control sobre la entrega final al dispositivo**.
+- Requiere gestionar registros de dispositivos y tokens generados por los servicios de notificación móviles.
 
 ---
 
 # 2. Azure Communication Services
 
+Azure Communication Services es una plataforma que permite agregar **capacidades de comunicación en tiempo real** como chat, SMS, voz y video a las aplicaciones. :contentReference[oaicite:3]{index=3}
+
+El servicio proporciona APIs REST y SDKs para integrar funcionalidades de comunicación dentro de aplicaciones web y móviles. :contentReference[oaicite:4]{index=4}
+
 ## Ventajas
 
-- Plataforma de comunicación que soporta múltiples canales:
+- Permite integrar múltiples canales de comunicación en una aplicación:
 
-  - **[SMS](https://learn.microsoft.com/en-us/azure/communication-services/concepts/sms/concepts)**
-  - **[Chat](https://learn.microsoft.com/en-us/azure/communication-services/concepts/chat/concepts)**
-  - **[Voice](https://learn.microsoft.com/en-us/azure/communication-services/concepts/voice-video-calling/about-call-types)**
-  - **[Video](https://learn.microsoft.com/en-us/azure/communication-services/concepts/voice-video-calling/about-call-types)**
+  - SMS
+  - chat
+  - llamadas de voz
+  - videollamadas
+  - correo electrónico
 
-- Ofrece **[SDKs oficiales](https://learn.microsoft.com/en-us/azure/communication-services/overview)** para múltiples lenguajes:
+  https://learn.microsoft.com/en-us/azure/communication-services/overview
+
+- Proporciona SDKs para múltiples plataformas como:
 
   - JavaScript
-  - .NET
   - Android
   - iOS
+  - .NET
 
-- Permite integrar comunicaciones con la **[red telefónica pública (PSTN)](https://learn.microsoft.com/en-us/azure/communication-services/concepts/services)**.
+  https://learn.microsoft.com/en-us/azure/communication-services/overview
+
+- Permite integrar aplicaciones con la **red telefónica pública (PSTN)** para realizar llamadas o enviar SMS.  
+  https://learn.microsoft.com/en-us/azure/communication-services/overview
 
 ## Desventajas
 
-- No está diseñado específicamente para **notificaciones push móviles**.
+- No está diseñado específicamente para **notificaciones push móviles del sistema operativo**.
 
-- Requiere mayor esfuerzo de desarrollo para implementar lógica de mensajería equivalente a notificaciones push.
+- Las comunicaciones como SMS o llamadas pueden generar **costos adicionales por mensaje o minuto**.
 
-- Las funcionalidades de SMS dependen de **[disponibilidad regional y regulaciones](https://learn.microsoft.com/en-us/azure/communication-services/concepts/sms/concepts)**.
-
-- Puede incrementar los costos al utilizar canales como SMS en lugar de notificaciones push.
+- Requiere mayor desarrollo para implementar una lógica equivalente a notificaciones push.
 
 ---
 
 # 3. Amazon Simple Notification Service (SNS)
 
+Amazon SNS es un servicio de mensajería totalmente gestionado que permite enviar mensajes a múltiples suscriptores mediante un modelo **publish/subscribe**.  
+
+También permite enviar notificaciones push a dispositivos móviles utilizando servicios de notificación como APNs o FCM. :contentReference[oaicite:5]{index=5}
+
 ## Ventajas
 
-- Servicio de mensajería completamente gestionado que soporta **[publicación y suscripción de eventos](https://docs.aws.amazon.com/sns/latest/dg/welcome.html)**.
+- Permite enviar notificaciones push directamente a aplicaciones móviles mediante integración con:
 
-- Permite enviar notificaciones push a dispositivos móviles mediante integración con:
+  - Apple Push Notification Service (APNs)
+  - Firebase Cloud Messaging (FCM)
 
-  - **[Firebase Cloud Messaging (FCM)](https://docs.aws.amazon.com/sns/latest/dg/sns-send-custom-platform-specific-payloads-mobile-devices.html)**
-  - **[Apple Push Notification Service (APNs)](https://docs.aws.amazon.com/sns/latest/dg/mobile-push-apns.html)**
+  https://docs.aws.amazon.com/sns/latest/dg/mobile-push-apns.html
 
-- Permite enviar notificaciones a múltiples endpoints mediante **[topics y suscripciones](https://docs.aws.amazon.com/sns/latest/dg/sns-create-topic.html)**.
+- Permite enviar mensajes a múltiples destinos utilizando **topics y suscripciones**.  
+  https://docs.aws.amazon.com/sns/latest/dg/welcome.html
 
-- Escala automáticamente para enviar **millones de mensajes por segundo**.
+- Puede integrarse con otros servicios de AWS como:
 
-- Permite integrarse fácilmente con otros servicios de AWS como:
+  - AWS Lambda
+  - Amazon SQS
 
-  - **[AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)**
-  - **[Amazon SQS](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html)**
+  https://docs.aws.amazon.com/sns/latest/dg/welcome.html
+
+- Escala automáticamente para manejar grandes volúmenes de mensajes.
 
 ## Desventajas
 
-- Introduce **dependencia con el ecosistema AWS**, mientras que RapidGo utiliza infraestructura basada en Azure.
+- Introduce dependencia con el ecosistema **AWS**, mientras que la arquitectura de RapidGo está basada en Azure.
 
-- Integrarlo dentro de una arquitectura Azure puede requerir **configuraciones adicionales de red y seguridad**.
+- Integrar servicios AWS dentro de una arquitectura Azure puede incrementar la complejidad operativa.
 
-- Puede aumentar la complejidad operativa al utilizar servicios de múltiples proveedores cloud.
+- Requiere gestionar configuraciones adicionales de seguridad y credenciales entre proveedores cloud.
 
 ---
 
 # Decisión
 
-Se selecciona **[Azure Notification Hubs](https://learn.microsoft.com/en-us/azure/notification-hubs/)** como la solución principal para el envío de **notificaciones push en RapidGo**.
+Se selecciona **Azure Notification Hubs** como el servicio para el envío de notificaciones push en RapidGo.
 
 ---
 
 # Justificación
 
-Azure Notification Hubs es la opción más adecuada para RapidGo debido a que está diseñado específicamente para **notificaciones push a aplicaciones móviles**, lo cual se ajusta directamente a las necesidades de la aplicación.
+Azure Notification Hubs está diseñado específicamente para el envío de **notificaciones push a dispositivos móviles a gran escala**, proporcionando una infraestructura que permite enviar mensajes a millones de dispositivos utilizando una única API. :contentReference[oaicite:6]{index=6}
 
-Además, permite:
+Además, el servicio permite integrar fácilmente aplicaciones móviles con servicios de notificación de las plataformas como **APNs y FCM**, simplificando la gestión de dispositivos y la segmentación de usuarios. :contentReference[oaicite:7]{index=7}
 
-- Integrarse fácilmente con **[Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/)** dentro de la arquitectura serverless del sistema.
-- Enviar notificaciones a **Android y iOS desde un único servicio**.
-- Manejar grandes volúmenes de notificaciones sin necesidad de administrar infraestructura adicional.
-- Reducir la complejidad del backend mediante una **API unificada para múltiples plataformas**.
-
-El servicio también ofrece un **[Free Tier](https://azure.microsoft.com/en-us/pricing/details/notification-hubs/)** que permite iniciar el proyecto con costos bajos en las primeras etapas.
-
-Dentro del flujo de RapidGo, cuando el estado de un pedido cambie en el backend, una **Azure Function** publicará un evento que enviará una notificación al cliente correspondiente mediante Azure Notification Hubs, mejorando la **experiencia del usuario y la visibilidad del estado de los pedidos en tiempo real**.
+Debido a que RapidGo utiliza una arquitectura basada en **Microsoft Azure**, el uso de Azure Notification Hubs permite mantener la coherencia tecnológica dentro del ecosistema cloud y reducir la complejidad operativa.
 
 ---
-
 # Consecuencias
 
-## Positivas
+## Ventajas
 
-- Mejora significativa en la **experiencia del cliente** mediante notificaciones en tiempo real.
-- Arquitectura alineada con el ecosistema **Azure serverless**.
-- Escalabilidad para manejar grandes volúmenes de pedidos y usuarios.
-- Reducción de complejidad en el backend.
+- Arquitectura alineada con el ecosistema Azure.
+- Escalabilidad para manejar grandes volúmenes de notificaciones.
+- Entrega de notificaciones push en tiempo real a dispositivos móviles.
 
-## Negativas
+## Desventajas (Limitaciones)
 
-- Dependencia de servicios externos como **APNs y FCM** para la entrega final.
-- Requiere correcta configuración de certificados y credenciales de las plataformas móviles.
+- Dependencia de los servicios de notificación de cada plataforma (APNs y FCM).
+- Requiere configuración inicial de certificados y credenciales de cada plataforma móvil.
