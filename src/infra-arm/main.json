@@ -11,7 +11,7 @@
     },
     "location": {
       "type": "string",
-      "defaultValue": "brazilsouth",
+      "defaultValue": "eastus",
       "metadata": {
         "description": "Azure region for all resources"
       }

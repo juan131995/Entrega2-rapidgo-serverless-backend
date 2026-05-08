@@ -14,7 +14,7 @@ on:
       location:
         description: 'Azure region'
         required: true
-        default: 'brazilsouth'
+        default: 'eastus'
       confirm:
         description: 'Type "yes" to confirm deployment'
         required: true
@@ -52,7 +52,7 @@ jobs:
         run: |
           az group create \
             --name ${{ steps.env.outputs.rg_name }} \
-            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }} \
+            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus' }} \
             --tags environment=${{ steps.env.outputs.env_name }}
 
   validate:
@@ -100,7 +100,7 @@ jobs:
             --template-file src/infra-arm/main.json \
             --parameters src/infra-arm/azuredeploy.parameters.json \
             --parameters environmentName=${{ needs.create-rg.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }} \
+            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus' }} \
             --parameters functionAppRuntime=node \
             --parameters cosmosDBFreeTier=true \
             --parameters skuAPIM=Developer \

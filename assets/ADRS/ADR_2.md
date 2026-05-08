@@ -22,11 +22,11 @@ Adicionalmente:
 
 - Mantiene el paradigma relacional actual, eliminando la curva de aprendizaje del equipo.
 - Facilita la migración directa de los 3 años de datos históricos desde MySQL.
-- Garantiza integridad transaccional (**ACID**).
+- Garantiza integridad transaccional ([**ACID**](https://learn.microsoft.com/es-es/azure/azure-sql/database/features-comparison)).
 
 #### Desventajas
 
-- Escalar para soportar ráfagas abruptas de **500 req/s** puede requerir tiers de cómputo que superen el presupuesto de **$50 USD**.
+- Escalar para soportar ráfagas abruptas de **500 req/s** puede requerir [tiers de cómputo](https://learn.microsoft.com/es-es/azure/azure-sql/database/serverless-tier-overview#performance-configuration) que superen el presupuesto de **$50 USD**.
 - Manejar atributos variables de distintos comercios requiere:
   - Alteraciones estructurales (`ALTER TABLE`)
   - Diseños complejos tipo **EAV (Entity-Attribute-Value)**
@@ -37,16 +37,16 @@ Adicionalmente:
 
 #### Ventajas
 
-- Su naturaleza **NoSQL orientada a documentos JSON** es ideal para manejar atributos dinámicos y variables.
-- El **Free Tier** garantiza:
+- Su naturaleza [**NoSQL orientada a documentos JSON**](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/modeling-data) es ideal para manejar atributos dinámicos y variables.
+- El [**Free Tier**](https://learn.microsoft.com/es-es/azure/cosmos-db/free-tier) garantiza:
   - **1.000 RU/s**
   - **25 GB de almacenamiento**
 - Cumple el requerimiento de:
   - **500 req/s**
   - Límite presupuestal
 - Su integración con **Azure Functions** mediante:
-  - Bindings
-  - Change Feed
+  - [Bindings](https://learn.microsoft.com/es-es/azure/azure-functions/functions-bindings-cosmosdb-v2)
+  - [Change Feed](https://learn.microsoft.com/es-es/azure/cosmos-db/change-feed)
 - Facilita arquitecturas reactivas.
 
 #### Desventajas
@@ -54,14 +54,14 @@ Adicionalmente:
 - Requiere un cambio de paradigma:
   - De relacional a NoSQL
 - Exige un proceso de ingeniería de datos (**ETL**) para:
-  - Desnormalizar
-  - Migrar los 3 años de histórico desde MySQL hacia documentos JSON
+  - [Desnormalizar](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/modeling-data#embedding-data)
+  - [Migrar](https://learn.microsoft.com/es-es/azure/cosmos-db/migrate-data) los 3 años de histórico desde MySQL hacia documentos JSON
 
 ---
 
 ## Decisión
 
-Se elige **Azure Cosmos DB** utilizando su **API for NoSQL** bajo el esquema del **Free Tier**.
+Se elige [**Azure Cosmos DB**](https://learn.microsoft.com/es-es/azure/cosmos-db/) utilizando su [**API for NoSQL**](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/) bajo el esquema del [**Free Tier**](https://learn.microsoft.com/es-es/azure/cosmos-db/free-tier).
 
 ---
 
@@ -74,12 +74,12 @@ Aunque implica abandonar el modelo relacional actual, Cosmos DB soluciona los do
 
 A nivel de negocio, almacenar los pedidos como documentos JSON nativos permite que la aplicación móvil (escrita en **React Native**) reciba y envíe estructuras de datos de forma mucho más ágil sin un ORM pesado en el medio.
 
-La integración nativa de Cosmos DB con Azure Functions mediante **Change Feed** es la decisión clave que permitirá:
+La integración nativa de Cosmos DB con [Azure Functions](https://learn.microsoft.com/es-es/azure/azure-functions/) mediante [**Change Feed**](https://learn.microsoft.com/es-es/azure/azure-functions/functions-bindings-cosmosdb-v2-trigger) es la decisión clave que permitirá:
 
 - Aislar la lógica de notificaciones (`notificarCliente`)
 - Desacoplar el flujo de guardado de datos
-- Garantizar actualizaciones en tiempo real mediante **Notification Hubs**
-- Mantener una latencia general de API menor a **800 ms**
+- Garantizar actualizaciones en tiempo real mediante [**Notification Hubs**](https://learn.microsoft.com/es-es/azure/notification-hubs/)
+- Mantener una [latencia general de API](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/performance-tips) menor a **800 ms**
 
 ---
 
@@ -87,8 +87,8 @@ La integración nativa de Cosmos DB con Azure Functions mediante **Change Feed**
 
 ### Positivas
 
-- Reducción del costo de persistencia a **$0 USD** durante el piloto usando el tier gratuito.
-- Tiempos de respuesta de lectura/escritura de un solo dígito en milisegundos.
+- Reducción del costo de persistencia a **$0 USD** durante el piloto usando el [tier gratuito](https://learn.microsoft.com/es-es/azure/cosmos-db/free-tier).
+- [Tiempos de respuesta de lectura/escritura](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/performance-tips#latency) de un solo dígito en milisegundos.
 
 ---
 
@@ -98,17 +98,17 @@ La integración nativa de Cosmos DB con Azure Functions mediante **Change Feed**
   - Node.js
   - Python
 - Deberá invertir tiempo en aprender:
-  - Modelado NoSQL
-  - Diseño por particiones
-  - Estrategias de desnormalización
+  - [Modelado NoSQL](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/modeling-data)
+  - [Diseño por particiones](https://learn.microsoft.com/es-es/azure/cosmos-db/partitioning-overview)
+  - [Estrategias de desnormalización](https://learn.microsoft.com/es-es/azure/cosmos-db/nosql/modeling-data#denormalizing-data)
 
 ---
 
 ## Mitigación
 
-Se deberá diseñar un script de migración **one-off (ETL)** en Python para transformar el esquema relacional de los últimos 3 años de MySQL hacia colecciones JSON particionadas por:
+Se deberá diseñar un [script de migración **one-off (ETL)**](https://learn.microsoft.com/es-es/azure/cosmos-db/migrate-data) en Python para transformar el esquema relacional de los últimos 3 años de MySQL hacia [colecciones JSON particionadas](https://learn.microsoft.com/es-es/azure/cosmos-db/partitioning-overview) por:
 
 - `id_usuario`
 - o `fecha`
 
-antes del paso a producción.
+antes del paso a producción. Se puede utilizar [Azure Database Migration Service](https://learn.microsoft.com/es-es/azure/dms/) como alternativa.

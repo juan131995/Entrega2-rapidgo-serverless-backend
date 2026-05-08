@@ -6,7 +6,7 @@
       "value": "dev"
     },
     "location": {
-      "value": "brazilsouth"
+      "value": "eastus"
     },
     "functionAppRuntime": {
       "value": "node"
