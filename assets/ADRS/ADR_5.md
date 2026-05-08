@@ -21,8 +21,8 @@ La nueva arquitectura **serverless en Azure** debe cumplir con los siguientes re
 - Integrarse con la aplicación móvil desarrollada en **React Native**.
 - Funcionar con los servicios de notificación de las plataformas:
 
-  - **Firebase Cloud Messaging (FCM)**
-  - **Apple Push Notification Service (APNs)**
+  - **[Firebase Cloud Messaging](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**
+  - **[Apple Push Notification Service](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**
 
 ---
 
@@ -36,41 +36,35 @@ La nueva arquitectura **serverless en Azure** debe cumplir con los siguientes re
 
 - Ofrece compatibilidad con múltiples plataformas mediante una interfaz unificada:
 
-  - Android (FCM)
-  - iOS (APNs)
+  - Android (**[FCM](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**)
+  - iOS (**[APNs](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**)
 
 - Permite implementar **patrones avanzados de envío de notificaciones**:
 
   - Difusión a múltiples dispositivos
-  - Segmentación mediante etiquetas dinámicas
+  - Segmentación mediante **[etiquetas dinámicas](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**
 
 - Permite enviar notificaciones a **millones de dispositivos** sin rediseñar la infraestructura.
 
 - Proporciona mecanismos de seguridad mediante:
 
-  - **Shared Access Signature (SAS)**
-  - Autenticación federada.
-
-Referencia  
-https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview
+  - **[Shared Access Signature (SAS)](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**
+  - **[Autenticación federada](https://learn.microsoft.com/es-es/azure/notification-hubs/notification-hubs-push-notification-overview)**
 
 #### Desventajas
 
 - Depende de servicios externos de notificaciones:
 
-  - **Platform Notification Services (PNS)**
-  - **Apple Push Notification Service (APNs)**
-  - **Firebase Cloud Messaging (FCM)**
+  - **[Platform Notification Services (PNS)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer)**
+  - **[Apple Push Notification Service (APNs)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer)**
+  - **[Firebase Cloud Messaging (FCM)](https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer)**
 
 - Existe posibilidad de pérdida de notificaciones debido a:
 
-  - Errores en servicios de notificación externos
-  - Configuraciones incorrectas
+  - errores en los servicios de notificación externos
+  - configuraciones incorrectas.
 
 - Una vez enviada la notificación a los servicios de plataforma, **Azure pierde control sobre la entrega final al dispositivo**.
-
-Referencia  
-https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer
 
 ---
 
@@ -85,40 +79,28 @@ https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push
   - Chat
   - Video
 
-- Disponibilidad de **SDKs y APIs** para múltiples plataformas:
+- Disponibilidad de **[SDKs y APIs para múltiples plataformas](https://learn.microsoft.com/en-us/azure/communication-services/overview)** como:
 
   - JavaScript
   - .NET
   - Android
   - iOS
 
-Referencia  
-https://learn.microsoft.com/en-us/azure/communication-services/overview
-
-- Permite integrarse con servicios de comunicación avanzados como la **red telefónica pública (PSTN)**.
-
-Referencia  
-https://learn.microsoft.com/en-us/azure/communication-services/concepts/services
+- Permite integrarse con servicios de comunicación avanzados como la **[red telefónica pública (PSTN)](https://learn.microsoft.com/en-us/azure/communication-services/concepts/services)**.
 
 #### Desventajas
 
-- Las funcionalidades de **SMS y telefonía dependen de regulaciones regionales** y disponibilidad de números telefónicos.
-
-Referencia  
-https://learn.microsoft.com/en-us/azure/communication-services/concepts/sms/concepts
+- Las funcionalidades de **SMS y telefonía dependen de regulaciones regionales** y disponibilidad de números telefónicos según **[las capacidades regionales del servicio](https://learn.microsoft.com/en-us/azure/communication-services/concepts/sms/concepts)**.
 
 - Requiere mayor esfuerzo de desarrollo para integrar sus APIs dentro de la aplicación.
 
-- Implica configuración adicional de infraestructura dentro de Azure.
-
-Referencia  
-https://learn.microsoft.com/en-us/azure/communication-services/overview
+- Implica configuración adicional de infraestructura dentro de Azure para poder utilizar **[Azure Communication Services](https://learn.microsoft.com/en-us/azure/communication-services/overview)**.
 
 ---
 
 ## Decisión
 
-Se elige **Azure Notification Hubs** como servicio principal para el envío de **notificaciones push en RapidGo**.
+Se elige **[Azure Notification Hubs](https://learn.microsoft.com/es-es/azure/notification-hubs/)** como servicio principal para el envío de **notificaciones push en RapidGo**.
 
 ---
 
@@ -132,42 +114,10 @@ Esto permite:
 - Reducir la complejidad de implementación en el backend.
 - Escalar el envío de notificaciones a **millones de dispositivos**.
 
-Adicionalmente, el servicio ofrece un **Free Tier**, lo cual permite iniciar el proyecto con costos muy bajos durante las primeras etapas.
+Adicionalmente, el servicio ofrece un **[Free Tier](https://azure.microsoft.com/en-us/pricing/details/notification-hubs/)**, lo cual permite iniciar el proyecto con costos muy bajos durante las primeras etapas.
 
-En el contexto de la arquitectura serverless de RapidGo, **Azure Notification Hubs se integrará con Azure Functions**, permitiendo:
+En el contexto de la arquitectura serverless de RapidGo, **Azure Notification Hubs se integrará con [Azure Functions](https://learn.microsoft.com/es-es/azure/azure-functions/)**, permitiendo:
 
 - Desacoplar el envío de notificaciones del flujo principal de pedidos.
 - Enviar notificaciones cuando cambie el estado de un pedido.
 - Mejorar la experiencia del usuario mediante **actualizaciones en tiempo real**.
-
----
-
-## Consecuencias
-
-### Positivas
-
-- Plataforma optimizada específicamente para **notificaciones push móviles**.
-- Soporte nativo para **Android y iOS**.
-- Alta **escalabilidad para millones de dispositivos**.
-- Integración sencilla con **Azure Functions**.
-
-### Negativas
-
-- Dependencia de servicios externos como:
-
-  - Firebase Cloud Messaging
-  - Apple Push Notification Service
-
-- Si en el futuro se requieren **SMS, llamadas o video**, será necesario integrar **Azure Communication Services u otros servicios adicionales**.
-
----
-
-## Referencias
-
-https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-overview
-
-https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-fixer
-
-https://azure.microsoft.com/en-us/pricing/details/notification-hubs/
-
-https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-aspnet-backend-azure-functions
