@@ -1,8 +1,5 @@
 # ADR 001: Uso de Azure Functions (Serverless) para la Lógica de Negocio
 
-## Estado
-Propuesto (Mayo 2026)
-
 ## Contexto
 RapidGo se encuentra en una fase piloto crítica con las siguientes restricciones:
 * **Presupuesto:** Limitado a un máximo de $50 USD mensuales.
