@@ -1,43 +1,37 @@
 # ADR 001: Uso de Azure Functions (Serverless) para la Lógica de Negocio
 
-## Contexto
-RapidGo se encuentra en una fase piloto crítica con las siguientes restricciones:
-* **Presupuesto:** Máximo de $50 USD mensuales.
-* **Infraestructura:** Equipo de una sola persona.
-* **Stack Técnico:** Dominio de Python y Node.js.
-* **Escalabilidad:** Necesidad de responder a la demanda variable de pedidos sin administración manual de servidores.
+## Título
+Uso de [Azure Functions (Serverless)](https://learn.microsoft.com/es-es/azure/azure-functions/functions-overview) sobre [Azure App Service](https://learn.microsoft.com/es-es/azure/app-service/overview) para la lógica de negocio de RapidGo.
 
-## Alternativas Evaluadas
+## Contexto
+RapidGo enfrenta una fase piloto con un presupuesto limitado ($50 USD/mes) y un equipo de infraestructura de una sola persona. Se requiere una solución que minimice la carga operativa y escale según la demanda de pedidos sin necesidad de administrar servidores. Además, el equipo domina Python y Node.js, por lo que la solución debe soportar estos lenguajes de forma nativa.
+
+## Alternativas evaluadas
 
 ### 1. [Azure App Service (Plan Básico/Estándar)](https://learn.microsoft.com/es-es/azure/app-service/overview)
-Entorno de hosting dedicado (PaaS) para aplicaciones web.
-* **Limitación:** Representa un costo fijo mensual que compromete el presupuesto de $50 USD. Aunque ofrece control, demanda tareas de mantenimiento (parches y escalado manual) que sobrecargan al único responsable de infraestructura.
+Ofrece un entorno de hosting dedicado y mayor control sobre el servidor. Sin embargo, implica un costo fijo mensual que podría exceder el presupuesto de $50 USD si se requiere alta disponibilidad, y demanda mayor gestión de parches y escalado manual.
 
 ### 2. [Azure Functions (Plan de Consumo)](https://learn.microsoft.com/es-es/azure/azure-functions/consumption-plan)
-Arquitectura de cómputo basada en eventos (Serverless).
-* **Ventaja:** El modelo de pago por ejecución y su capa gratuita (1 millón de solicitudes) permiten un ahorro crítico. La infraestructura es invisible para el desarrollador, facilitando el despliegue rápido en Python y Node.js.
+Modelo serverless donde solo se paga por el tiempo de ejecución. Ofrece una capa gratuita amplia (primer millón de ejecuciones), ideal para el presupuesto limitado, y elimina la administración de infraestructura.
 
 ### 3. [Azure Virtual Machines (IaaS)](https://learn.microsoft.com/es-es/azure/virtual-machines/overview)
-Despliegue tradicional mediante la creación y gestión de servidores virtuales.
-* **Desventaja (Peor opción):** Es la alternativa con mayor carga operativa; el equipo debería configurar el SO, instalar runtimes de Python/Node.js y gestionar la seguridad manualmente. Además, el costo por hora es constante incluso si no hay pedidos, superando fácilmente el presupuesto de la fase piloto sin ofrecer escalado automático nativo.
+Consiste en el aprovisionamiento de servidores virtuales donde se tiene control total del sistema operativo. Es la alternativa con mayor carga operativa, ya que el único encargado de infraestructura debería gestionar manualmente la seguridad, actualizaciones del SO y el escalado. Además, genera un costo constante por hora que no se ajusta a cero ante la falta de pedidos, poniendo en riesgo el presupuesto de $50 USD/mes.
 
 ## Decisión
-Se mantiene la elección de **[Azure Functions bajo el Plan de Consumo](https://learn.microsoft.com/es-es/azure/azure-functions/functions-overview)**. 
-
-La combinación de **escalado automático a cero** y la **reducción drástica de tareas de administración** lo convierte en el servicio ideal para que el equipo pueda lanzar el piloto de RapidGo sin exceder los $50 USD mensuales ni saturar al único encargado de infraestructura.
+Se elige [Azure Functions bajo el Plan de Consumo](https://learn.microsoft.com/es-es/azure/azure-functions/consumption-plan). La justificación técnica se basa en la capacidad de escalado automático a cero (ahorro de costos cuando no hay pedidos) y la integración nativa con los lenguajes del equipo (Node.js/Python). Desde el negocio, permite cumplir con la restricción presupuestaria de la fase piloto y reduce la carga sobre el único encargado de infraestructura al ser un servicio totalmente administrado.
 
 ## Consecuencias
 
 ### Ventajas
-* **Eficiencia y Escalabilidad:** El uso de Azure Functions permite un [escalado dinámico y un modelo basado en eventos](https://learn.microsoft.com/es-es/azure/azure-functions/functions-concepts?pivots=programming-language-csharp) que se ajusta perfectamente a la demanda variable.
-* **Costo:** Operatividad cercana a $0 USD durante el inicio del piloto gracias al [plan de consumo](https://learn.microsoft.com/es-es/azure/azure-functions/functions-consumption-costs).
-* **Agilidad:** Integración nativa con la API de React Native y facilidad de despliegue para los lenguajes dominados por el equipo.
+* **Costo operativo:** Cercano a $0 durante el inicio del piloto gracias a la [capa gratuita y el modelo de facturación por consumo](https://learn.microsoft.com/es-es/azure/azure-functions/functions-consumption-costs?tabs=consumption-plan%2Cportal).
+* **Escalabilidad:** [Escalabilidad infinita y automática](https://learn.microsoft.com/es-es/azure/azure-functions/functions-concepts?pivots=programming-language-python) ante picos de demanda de usuarios sin intervención manual.
+* **Compatibilidad:** Compatibilidad total con la API actual de React Native y los flujos de trabajo de desarrollo del equipo.
 
 ### Trade-offs
-* **Latencia (Cold Start):** Posible demora en la ejecución inicial tras inactividad. Se mitigará mediante optimización de código para asegurar tiempos de respuesta ágiles.
+* **Riesgo de "Cold Start":** Latencia en la primera petición tras inactividad, el cual se mitigará mediante optimización de código en Python/Node.js para mantener los tiempos de respuesta dentro de los contratos actuales.
 
 ---
-**Documentación de referencia:**
-- [Azure Functions Overview](https://learn.microsoft.com/es-es/azure/azure-functions/functions-overview)
-- [Azure App Service Overview](https://learn.microsoft.com/es-es/azure/app-service/overview)
-- [Azure Virtual Machines Overview](https://learn.microsoft.com/es-es/azure/virtual-machines/overview)
+**Enlaces oficiales de referencia:**
+- [Información general de Azure Functions](https://learn.microsoft.com/es-es/azure/azure-functions/functions-overview)
+- [Planes de hospedaje de Azure Functions](https://learn.microsoft.com/es-es/azure/azure-functions/consumption-plan)
+- [Documentación de Azure Virtual Machines](https://learn.microsoft.com/es-es/azure/virtual-machines/overview)
