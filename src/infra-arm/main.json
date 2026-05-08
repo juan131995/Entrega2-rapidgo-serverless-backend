@@ -13,42 +13,25 @@
       "type": "string",
       "defaultValue": "brazilsouth",
       "metadata": {
-        "description": "Azure region for all resources (brazilsouth recommended for data sovereignty)"
+        "description": "Azure region for all resources"
       }
     },
     "functionAppRuntime": {
       "type": "string",
       "defaultValue": "node",
-      "allowedValues": [
-        "node",
-        "python"
-      ],
-      "metadata": {
-        "description": "Runtime stack for Azure Functions (Node.js or Python per team expertise)"
-      }
+      "allowedValues": ["node", "python"]
     },
     "cosmosDBFreeTier": {
       "type": "bool",
-      "defaultValue": true,
-      "metadata": {
-        "description": "Enable Cosmos DB free tier discount (1 per subscription)"
-      }
+      "defaultValue": true
     },
     "skuAPIM": {
       "type": "string",
       "defaultValue": "Developer",
-      "allowedValues": [
-        "Developer",
-        "Basic",
-        "Standard"
-      ],
-      "metadata": {
-        "description": "API Management SKU (Developer tier for pilot)"
-      }
+      "allowedValues": ["Developer", "Basic", "Standard"]
     }
   },
   "variables": {
-    "nameMaxLength": 24,
     "storageAccountName": "[toLower(concat('az', substring(replace(parameters('environmentName'), '-', ''), 0, min(length(replace(parameters('environmentName'), '-', '')), 5)), uniqueString(resourceGroup().id)))]",
     "functionAppName": "[concat('az-rapidgo-', parameters('environmentName'), '-functions')]",
     "functionPlanName": "[concat('az-rapidgo-', parameters('environmentName'), '-plan')]",
@@ -60,347 +43,518 @@
     "blobContainerName": "entregas",
     "notificationHubNamespace": "[concat('az-rapidgo-', parameters('environmentName'), '-notif-ns')]",
     "notificationHubName": "[concat('az-rapidgo-', parameters('environmentName'), '-notifications')]",
-    "keyVaultName": "[toLower(take(concat('az-', parameters('environmentName'), '-kv-', substring(uniqueString(resourceGroup().id), 0, 4)), 24))]"
+    "keyVaultName": "[toLower(take(concat('az-', parameters('environmentName'), '-kv-', substring(uniqueString(resourceGroup().id), 0, 4)), 24))]",
+    "appInsightsName": "[concat(variables('functionAppName'), '-insights')]",
+    "apimVersion": "2023-05-01-preview",
+    "nhVersion": "2023-01-01-preview",
+    "cosmosDBVersion": "2023-11-15"
   },
   "resources": [
     {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployBlobStorage",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('blobStorageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template",
+        "purpose": "RapidGo file storage"
+      },
       "properties": {
-        "mode": "Incremental",
-        "templateLink": {
-          "relativePath": "blob-storage/deploy.json",
-          "contentVersion": "1.0.0.0"
-        },
-        "parameters": {
-          "storageAccountName": {
-            "value": "[variables('blobStorageAccountName')]"
-          },
-          "containerName": {
-            "value": "[variables('blobContainerName')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          }
+        "accessTier": "Hot",
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "defaultAction": "Allow",
+          "virtualNetworkRules": [],
+          "ipRules": []
         }
       }
     },
     {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployCosmosDB",
-      "properties": {
-        "mode": "Incremental",
-        "templateLink": {
-          "relativePath": "cosmos-db/deploy.json",
-          "contentVersion": "1.0.0.0"
-        },
-        "parameters": {
-          "accountName": {
-            "value": "[variables('cosmosAccountName')]"
-          },
-          "databaseName": {
-            "value": "[variables('cosmosDatabaseName')]"
-          },
-          "containerName": {
-            "value": "[variables('cosmosContainerName')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "enableFreeTier": {
-            "value": "[parameters('cosmosDBFreeTier')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          }
-        }
-      }
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployNotificationHubs",
-      "properties": {
-        "mode": "Incremental",
-        "templateLink": {
-          "relativePath": "notification-hubs/deploy.json",
-          "contentVersion": "1.0.0.0"
-        },
-        "parameters": {
-          "namespaceName": {
-            "value": "[variables('notificationHubNamespace')]"
-          },
-          "hubName": {
-            "value": "[variables('notificationHubName')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          }
-        }
-      }
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployKeyVault",
-      "properties": {
-        "mode": "Incremental",
-        "templateLink": {
-          "relativePath": "key-vault/deploy.json",
-          "contentVersion": "1.0.0.0"
-        },
-        "parameters": {
-          "keyVaultName": {
-            "value": "[variables('keyVaultName')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          }
-        }
-      }
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployKeyVaultSecrets",
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default', variables('blobStorageAccountName'))]",
       "dependsOn": [
-        "deployKeyVault",
-        "deployCosmosDB",
-        "deployBlobStorage",
-        "deployNotificationHubs"
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]"
       ],
       "properties": {
-        "mode": "Incremental",
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "parameters": {
-            "keyVaultName": {
-              "type": "string"
-            },
-            "cosmosDbConnectionString": {
-              "type": "string"
-            },
-            "blobStorageConnectionString": {
-              "type": "string"
-            },
-            "notificationHubConnectionString": {
-              "type": "string"
-            }
-          },
-          "resources": [
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-07-01",
-              "name": "[format('{0}/cosmos-db-connection-string', parameters('keyVaultName'))]",
-              "properties": {
-                "value": "[parameters('cosmosDbConnectionString')]"
-              }
-            },
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-07-01",
-              "name": "[format('{0}/blob-storage-connection-string', parameters('keyVaultName'))]",
-              "properties": {
-                "value": "[parameters('blobStorageConnectionString')]"
-              }
-            },
-            {
-              "type": "Microsoft.KeyVault/vaults/secrets",
-              "apiVersion": "2023-07-01",
-              "name": "[format('{0}/notification-hub-connection-string', parameters('keyVaultName'))]",
-              "properties": {
-                "value": "[parameters('notificationHubConnectionString')]"
-              }
-            }
-          ]
+        "cors": {
+          "corsRules": []
         },
-        "parameters": {
-          "keyVaultName": {
-            "value": "[variables('keyVaultName')]"
-          },
-          "cosmosDbConnectionString": {
-            "value": "[reference('deployCosmosDB').outputs.connectionString.value]"
-          },
-          "blobStorageConnectionString": {
-            "value": "[reference('deployBlobStorage').outputs.connectionString.value]"
-          },
-          "notificationHubConnectionString": {
-            "value": "[reference('deployNotificationHubs').outputs.connectionString.value]"
-          }
+        "deleteRetentionPolicy": {
+          "enabled": true,
+          "days": 7
+        },
+        "containerDeleteRetentionPolicy": {
+          "enabled": true,
+          "days": 7
         }
       }
     },
     {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployFunctionApp",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default/{1}', variables('blobStorageAccountName'), variables('blobContainerName'))]",
       "dependsOn": [
-        "deployKeyVault",
-        "deployBlobStorage",
-        "deployCosmosDB",
-        "deployNotificationHubs"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('blobStorageAccountName'), 'default')]"
       ],
       "properties": {
-        "mode": "Incremental",
-        "templateLink": {
-          "relativePath": "function-app/deploy.json",
-          "contentVersion": "1.0.0.0"
-        },
-        "parameters": {
-          "functionAppName": {
-            "value": "[variables('functionAppName')]"
-          },
-          "planName": {
-            "value": "[variables('functionPlanName')]"
-          },
-          "storageAccountName": {
-            "value": "[variables('storageAccountName')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "runtime": {
-            "value": "[parameters('functionAppRuntime')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          },
-          "keyVaultUri": {
-            "value": "[reference('deployKeyVault').outputs.keyVaultUri.value]"
-          },
-          "cosmosDatabaseName": {
-            "value": "[variables('cosmosDatabaseName')]"
-          },
-          "cosmosContainerName": {
-            "value": "[variables('cosmosContainerName')]"
+        "publicAccess": "None"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[variables('cosmosAccountName')]",
+      "location": "[parameters('location')]",
+      "kind": "GlobalDocumentDB",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template",
+        "defaultExperience": "Core (SQL)"
+      },
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
           }
+        ],
+        "capabilities": [],
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session",
+          "maxIntervalInSeconds": 5,
+          "maxStalenessPrefix": 100
+        },
+        "enableMultipleWriteLocations": false,
+        "enableFreeTier": "[parameters('cosmosDBFreeTier')]",
+        "disableKeyBasedMetadataWriteAccess": false,
+        "backupPolicy": {
+          "type": "Periodic",
+          "periodicModeProperties": {
+            "backupIntervalInMinutes": 240,
+            "backupRetentionIntervalInHours": 8
+          }
+        },
+        "publicNetworkAccess": "Enabled",
+        "networkAclBypass": "None"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[format('{0}/{1}', variables('cosmosAccountName'), variables('cosmosDatabaseName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[variables('cosmosDatabaseName')]"
         }
       }
     },
     {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "updateKeyVaultAccessPolicy",
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosAccountName'), variables('cosmosDatabaseName'), variables('cosmosContainerName'))]",
       "dependsOn": [
-        "deployFunctionApp",
-        "deployKeyVault"
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('cosmosAccountName'), variables('cosmosDatabaseName'))]"
       ],
       "properties": {
-        "mode": "Incremental",
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "parameters": {
-            "keyVaultName": {
-              "type": "string"
-            },
-            "principalId": {
-              "type": "string"
-            }
+        "resource": {
+          "id": "[variables('cosmosContainerName')]",
+          "partitionKey": {
+            "paths": ["/tipo"],
+            "kind": "Hash"
           },
-          "resources": [
-            {
-              "type": "Microsoft.KeyVault/vaults/accessPolicies",
-              "apiVersion": "2023-07-01",
-              "name": "[format('{0}/add', parameters('keyVaultName'))]",
-              "properties": {
-                "accessPolicies": [
-                  {
-                    "tenantId": "[subscription().tenantId]",
-                    "objectId": "[parameters('principalId')]",
-                    "permissions": {
-                      "secrets": [
-                        "get",
-                        "list"
-                      ]
-                    }
-                  }
-                ]
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
               }
-            }
-          ]
-        },
-        "parameters": {
-          "keyVaultName": {
-            "value": "[variables('keyVaultName')]"
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ],
+            "compositeIndexes": [
+              [
+                {
+                  "path": "/tipo",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/usuarioId",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "descending"
+                }
+              ],
+              [
+                {
+                  "path": "/tipo",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/estado",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "descending"
+                }
+              ]
+            ]
           },
-          "principalId": {
-            "value": "[reference('deployFunctionApp').outputs.principalId.value]"
-          }
+          "defaultTtl": 2592000
         }
       }
     },
     {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "deployAPIM",
+      "type": "Microsoft.NotificationHubs/namespaces",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[variables('notificationHubNamespace')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Free"
+      },
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "zoneRedundancy": "Disabled"
+      }
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces/notificationHubs",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[format('{0}/{1}', variables('notificationHubNamespace'), variables('notificationHubName'))]",
+      "location": "[parameters('location')]",
       "dependsOn": [
-        "deployFunctionApp"
+        "[resourceId('Microsoft.NotificationHubs/namespaces', variables('notificationHubNamespace'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "apnsCredential": null,
+        "wnsCredential": null
+      }
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[format('{0}/{1}/DefaultFullSharedAccessSignature', variables('notificationHubNamespace'), variables('notificationHubName'))]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs', variables('notificationHubNamespace'), variables('notificationHubName'))]"
       ],
       "properties": {
-        "mode": "Incremental",
-        "templateLink": {
-          "relativePath": "api-management/deploy.json",
-          "contentVersion": "1.0.0.0"
+        "rights": ["Listen", "Send", "Manage"]
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('keyVaultName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "sku": {
+          "family": "A",
+          "name": "standard"
         },
-        "parameters": {
-          "apimName": {
-            "value": "[variables('apimName')]"
-          },
-          "publisherName": {
-            "value": "RapidGo Team"
-          },
-          "publisherEmail": {
-            "value": "team@rapidgo.app"
-          },
-          "sku": {
-            "value": "[parameters('skuAPIM')]"
-          },
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "environmentName": {
-            "value": "[parameters('environmentName')]"
-          },
-          "functionAppUrl": {
-            "value": "[reference('deployFunctionApp').outputs.functionAppDefaultHostName.value]"
-          }
+        "tenantId": "[subscription().tenantId]",
+        "enabledForTemplateDeployment": true,
+        "enableRbacAuthorization": false,
+        "accessPolicies": []
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/cosmos-db-connection-string', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))]"
+      ],
+      "properties": {
+        "value": "[listConnectionStrings(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName')), variables('cosmosDBVersion')).connectionStrings[0].connectionString]"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/blob-storage-connection-string', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]"
+      ],
+      "properties": {
+        "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', variables('blobStorageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName')), '2023-01-01').keys[0].value)]"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/notification-hub-connection-string', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules', variables('notificationHubNamespace'), variables('notificationHubName'), 'DefaultFullSharedAccessSignature')]"
+      ],
+      "properties": {
+        "value": "[listKeys(resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules', variables('notificationHubNamespace'), variables('notificationHubName'), 'DefaultFullSharedAccessSignature'), variables('nhVersion')).primaryConnectionString]"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionPlanName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic"
+      },
+      "kind": "functionapp",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "Application_Type": "web"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp,linux",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('functionPlanName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('functionPlanName'))]",
+        "siteConfig": {
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', variables('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "[parameters('functionAppRuntime')]"
+            },
+            {
+              "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            {
+              "name": "COSMOS_DB_NAME",
+              "value": "[variables('cosmosDatabaseName')]"
+            },
+            {
+              "name": "COSMOS_DB_CONTAINER",
+              "value": "[variables('cosmosContainerName')]"
+            },
+            {
+              "name": "COSMOS_DB_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/cosmos-db-connection-string/)', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri)]"
+            },
+            {
+              "name": "NOTIFICATION_HUB_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/notification-hub-connection-string/)', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri)]"
+            },
+            {
+              "name": "NOTIFICATION_HUB_NAME",
+              "value": "[variables('notificationHubName')]"
+            },
+            {
+              "name": "BLOB_STORAGE_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/blob-storage-connection-string/)', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri)]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "1"
+            },
+            {
+              "name": "WEBSITE_NODE_DEFAULT_VERSION",
+              "value": "~18"
+            }
+          ],
+          "linuxFxVersion": "[if(equals(parameters('functionAppRuntime'), 'node'), 'Node|18', 'Python|3.11')]"
         }
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/accessPolicies",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/add', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ],
+      "properties": {
+        "accessPolicies": [
+          {
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2022-09-01', 'full').identity.principalId]",
+            "permissions": {
+              "secrets": ["get", "list"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[variables('apimName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ],
+      "sku": {
+        "name": "[parameters('skuAPIM')]",
+        "capacity": 1
+      },
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "publisherName": "RapidGo Team",
+        "publisherEmail": "team@rapidgo.app",
+        "notificationSenderEmail": "noreply@rapidgo.app",
+        "hostnameConfigurations": [],
+        "virtualNetworkType": "None",
+        "disableGateway": false,
+        "apiVersionConstraint": {
+          "minApiVersion": "2019-01-01"
+        },
+        "restore": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rapidgo-api', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "RapidGo API",
+        "description": "API principal para la plataforma de domicilios RapidGo",
+        "serviceUrl": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName)]",
+        "path": "api",
+        "protocols": ["https"],
+        "apiVersion": "v1",
+        "apiRevision": "1",
+        "subscriptionRequired": true,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null
+        }
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/policies",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/policy', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "value": "<policies><inbound><base /><rate-limit calls=\"500\" renewal-period=\"60\" /><jwt-validate header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Token JWT inválido o expirado\"><openid-config url=\"https://rapidgo.auth0.com/.well-known/openid-configuration\" /></jwt-validate></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>",
+        "format": "xml"
       }
     }
   ],
   "outputs": {
     "functionAppDefaultHostName": {
       "type": "string",
-      "value": "[reference('deployFunctionApp').outputs.functionAppDefaultHostName.value]"
+      "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName]"
     },
     "apimGatewayUrl": {
       "type": "string",
-      "value": "[reference('deployAPIM').outputs.gatewayUrl.value]"
+      "value": "[reference(resourceId('Microsoft.ApiManagement/service', variables('apimName'))).gatewayUrl]"
     },
     "cosmosDbEndpoint": {
       "type": "string",
-      "value": "[reference('deployCosmosDB').outputs.endpoint.value]"
+      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))).documentEndpoint]"
     },
     "blobStorageEndpoint": {
       "type": "string",
-      "value": "[reference('deployBlobStorage').outputs.endpoint.value]"
+      "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))).primaryEndpoints.blob]"
     },
     "notificationHubEndpoint": {
       "type": "string",
-      "value": "[reference('deployNotificationHubs').outputs.endpoint.value]"
+      "value": "[reference(resourceId('Microsoft.NotificationHubs/namespaces', variables('notificationHubNamespace'))).serviceBusEndpoint]"
     },
     "resourceGroupName": {
       "type": "string",
