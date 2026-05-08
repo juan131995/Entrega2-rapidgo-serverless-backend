@@ -42,18 +42,18 @@
   },
   "variables": {
     "nameMaxLength": 24,
-    "storageAccountName": "[toLower(concat('az', substring(parameters('environmentName'), 0, 5), uniqueString(resourceGroup().id)))]",
+    "storageAccountName": "[toLower(concat('az', substring(replace(parameters('environmentName'), '-', ''), 0, min(length(replace(parameters('environmentName'), '-', '')), 5)), uniqueString(resourceGroup().id)))]",
     "functionAppName": "[concat('az-rapidgo-', parameters('environmentName'), '-functions')]",
     "functionPlanName": "[concat('az-rapidgo-', parameters('environmentName'), '-plan')]",
     "apimName": "[concat('az-rapidgo-', parameters('environmentName'), '-apim')]",
     "cosmosAccountName": "[toLower(concat('azrapidgo', parameters('environmentName'), 'db', uniqueString(resourceGroup().id)))]",
     "cosmosDatabaseName": "[concat('az-rapidgo-', parameters('environmentName'), '-db')]",
     "cosmosContainerName": "pedidos",
-    "blobStorageAccountName": "[toLower(concat('az', substring(parameters('environmentName'), 0, 4), 'blob', uniqueString(resourceGroup().id)))]",
+    "blobStorageAccountName": "[toLower(concat('az', substring(replace(parameters('environmentName'), '-', ''), 0, min(length(replace(parameters('environmentName'), '-', '')), 4)), 'blob', uniqueString(resourceGroup().id)))]",
     "blobContainerName": "entregas",
     "notificationHubNamespace": "[concat('az-rapidgo-', parameters('environmentName'), '-notif-ns')]",
     "notificationHubName": "[concat('az-rapidgo-', parameters('environmentName'), '-notifications')]",
-    "keyVaultName": "[toLower(concat('az-rapidgo-', parameters('environmentName'), '-kv', substring(uniqueString(resourceGroup().id), 0, 4)))]"
+    "keyVaultName": "[toLower(take(concat('az-', parameters('environmentName'), '-kv-', substring(uniqueString(resourceGroup().id), 0, 4)), 24))]"
   },
   "resources": [
     {
@@ -125,8 +125,7 @@
         "parameters": {
           "keyVaultName": { "value": "[variables('keyVaultName')]" },
           "location": { "value": "[parameters('location')]" },
-          "environmentName": { "value": "[parameters('environmentName')]" },
-          "functionAppPrincipalId": { "value": "" }
+          "environmentName": { "value": "[parameters('environmentName')]" }
         }
       }
     },

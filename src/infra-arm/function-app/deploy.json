@@ -63,8 +63,7 @@
         "managedBy": "arm-template"
       },
       "properties": {
-        "Application_Type": "web",
-        "WorkspaceResourceId": ""
+        "Application_Type": "web"
       }
     },
     {

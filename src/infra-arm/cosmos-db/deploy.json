@@ -36,11 +36,7 @@
             "isZoneRedundant": false
           }
         ],
-        "capabilities": [
-          {
-            "name": "EnableServerless"
-          }
-        ],
+        "capabilities": [],
         "consistencyPolicy": {
           "defaultConsistencyLevel": "[variables('consistencyLevel')]",
           "maxIntervalInSeconds": 5,

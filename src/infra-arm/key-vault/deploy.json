@@ -22,15 +22,7 @@
         "tenantId": "[subscription().tenantId]",
         "enabledForTemplateDeployment": true,
         "enableRbacAuthorization": false,
-        "accessPolicies": [
-          {
-            "tenantId": "[subscription().tenantId]",
-            "objectId": "[parameters('functionAppPrincipalId')]",
-            "permissions": {
-              "secrets": ["get", "list"]
-            }
-          }
-        ]
+        "accessPolicies": "[if(empty(parameters('functionAppPrincipalId')), createArray(), createArray(json(concat('{\"tenantId\":\"', subscription().tenantId, '\",\"objectId\":\"', parameters('functionAppPrincipalId'), '\",\"permissions\":{\"secrets\":[\"get\",\"list\"]}}'))))]"
       }
     }
   ],
