@@ -16,9 +16,6 @@
     },
     "skuAPIM": {
       "value": "Developer"
-    },
-    "notificationHubFcmApiKey": {
-      "value": ""
     }
   }
 }
