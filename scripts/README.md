@@ -4,7 +4,44 @@ Scripts de utilidad para gestionar la infraestructura de RapidGo en Azure.
 
 ## 📋 Scripts Disponibles
 
-### 1. `check-available-regions.sh`
+### 1. `test-region.sh` ⚡ NUEVO
+
+Prueba si una región específica funciona creando recursos reales de prueba.
+
+**Uso:**
+```bash
+./scripts/test-region.sh <region>
+```
+
+**Ejemplos:**
+```bash
+# Probar Central US (más común en Azure Student)
+./scripts/test-region.sh centralus
+
+# Probar West US
+./scripts/test-region.sh westus
+
+# Probar West Europe
+./scripts/test-region.sh westeurope
+```
+
+**Cuándo usar:**
+- Cuando recibes error `RequestDisallowedByAzure`
+- Para verificar qué región funciona REALMENTE en tu suscripción
+- Antes de hacer commit para evitar fallos
+
+**Lo que hace:**
+1. Crea un Resource Group de prueba
+2. Intenta crear un Storage Account
+3. Intenta crear un Cosmos DB
+4. Si ambos funcionan → región válida ✅
+5. Limpia todos los recursos de prueba
+
+**⏱️ Duración:** ~2-3 minutos
+
+---
+
+### 2. `check-available-regions.sh`
 
 Verifica las regiones de Azure disponibles en tu suscripción.
 

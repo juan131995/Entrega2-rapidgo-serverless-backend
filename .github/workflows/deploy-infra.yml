@@ -14,7 +14,7 @@ on:
       location:
         description: 'Azure region'
         required: true
-        default: 'eastus2'
+        default: 'centralus'
       confirm:
         description: 'Type "yes" to confirm deployment'
         required: true
@@ -51,7 +51,7 @@ jobs:
       - name: Check and delete existing RG if location mismatch
         run: |
           RG_NAME="${{ steps.env.outputs.rg_name }}"
-          TARGET_LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus2' }}"
+          TARGET_LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}"
 
           if az group exists --name "$RG_NAME" | grep -q "true"; then
             EXISTING_LOCATION=$(az group show --name "$RG_NAME" --query location -o tsv)
@@ -131,7 +131,7 @@ jobs:
         run: |
           az group create \
             --name ${{ steps.env.outputs.rg_name }} \
-            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus2' }} \
+            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --tags environment=${{ steps.env.outputs.env_name }}
 
   validate:
@@ -200,7 +200,7 @@ jobs:
             --template-file src/infra-arm/main.json \
             --parameters src/infra-arm/azuredeploy.parameters.json \
             --parameters environmentName=${{ needs.create-rg.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus2' }} \
+            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --parameters functionAppRuntime=node \
             --parameters cosmosDBFreeTier=true \
             --parameters skuAPIM=Developer \

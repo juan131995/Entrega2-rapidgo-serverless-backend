@@ -11,7 +11,7 @@
     },
     "location": {
       "type": "string",
-      "defaultValue": "eastus2",
+      "defaultValue": "centralus",
       "metadata": {
         "description": "Azure region for all resources"
       }
