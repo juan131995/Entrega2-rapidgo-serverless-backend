@@ -1,0 +1,168 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "accountName": {
+      "type": "string"
+    },
+    "databaseName": {
+      "type": "string"
+    },
+    "containerName": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "enableFreeTier": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "environmentName": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "cosmosDBVersion": "2023-11-15",
+    "consistencyLevel": "Session",
+    "partitionKeyPath": "/tipo",
+    "throughput": 400
+  },
+  "resources": [
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[parameters('accountName')]",
+      "location": "[parameters('location')]",
+      "kind": "GlobalDocumentDB",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template",
+        "defaultExperience": "Core (SQL)"
+      },
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ],
+        "capabilities": [],
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "[variables('consistencyLevel')]",
+          "maxIntervalInSeconds": 5,
+          "maxStalenessPrefix": 100
+        },
+        "enableMultipleWriteLocations": false,
+        "enableFreeTier": "[parameters('enableFreeTier')]",
+        "disableKeyBasedMetadataWriteAccess": false,
+        "backupPolicy": {
+          "type": "Periodic",
+          "periodicModeProperties": {
+            "backupIntervalInMinutes": 240,
+            "backupRetentionIntervalInHours": 8
+          }
+        },
+        "publicNetworkAccess": "Enabled",
+        "networkAclBypass": "None"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[format('{0}/{1}', parameters('accountName'), parameters('databaseName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[parameters('databaseName')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('accountName'), parameters('databaseName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[parameters('containerName')]",
+          "partitionKey": {
+            "paths": [
+              "[variables('partitionKeyPath')]"
+            ],
+            "kind": "Hash"
+          },
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ],
+            "compositeIndexes": [
+              [
+                {
+                  "path": "/tipo",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/usuarioId",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "descending"
+                }
+              ],
+              [
+                {
+                  "path": "/tipo",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/estado",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "descending"
+                }
+              ]
+            ]
+          },
+          "defaultTtl": 2592000
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "endpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName'))).documentEndpoint]"
+    },
+    "connectionString": {
+      "type": "string",
+      "value": "[listConnectionStrings(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName')), variables('cosmosDBVersion')).connectionStrings[0].connectionString]"
+    },
+    "databaseName": {
+      "type": "string",
+      "value": "[parameters('databaseName')]"
+    },
+    "containerName": {
+      "type": "string",
+      "value": "[parameters('containerName')]"
+    }
+  }
+}

@@ -67,12 +67,12 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Validate main.yaml
+      - name: Validate main.json
         run: |
           az deployment group validate \
             --resource-group ${{ needs.create-rg.outputs.rg_name }} \
-            --template-file src/infra-arm/main.yaml \
-            --parameters src/infra-arm/azuredeploy.parameters.yaml
+            --template-file src/infra-arm/main.json \
+            --parameters src/infra-arm/azuredeploy.parameters.json
 
   deploy:
     name: Deploy Infrastructure to Azure
@@ -97,8 +97,8 @@ jobs:
           az deployment group create \
             --resource-group ${{ needs.create-rg.outputs.rg_name }} \
             --name arm-rapidgo-${{ needs.create-rg.outputs.env_name }} \
-            --template-file src/infra-arm/main.yaml \
-            --parameters src/infra-arm/azuredeploy.parameters.yaml \
+            --template-file src/infra-arm/main.json \
+            --parameters src/infra-arm/azuredeploy.parameters.json \
             --parameters environmentName=${{ needs.create-rg.outputs.env_name }} \
             --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'brazilsouth' }} \
             --parameters functionAppRuntime=node \
