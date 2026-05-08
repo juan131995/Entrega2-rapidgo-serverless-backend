@@ -14,7 +14,7 @@ on:
       location:
         description: 'Azure region'
         required: true
-        default: 'eastus'
+        default: 'eastus2'
       confirm:
         description: 'Type "yes" to confirm deployment'
         required: true
@@ -48,11 +48,90 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Check and delete existing RG if location mismatch
+        run: |
+          RG_NAME="${{ steps.env.outputs.rg_name }}"
+          TARGET_LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus2' }}"
+
+          if az group exists --name "$RG_NAME" | grep -q "true"; then
+            EXISTING_LOCATION=$(az group show --name "$RG_NAME" --query location -o tsv)
+            if [ "$EXISTING_LOCATION" != "$TARGET_LOCATION" ]; then
+              echo "⚠️  Resource Group exists in '$EXISTING_LOCATION' but target is '$TARGET_LOCATION'"
+              echo "🗑️  Deleting existing Resource Group..."
+              az group delete --name "$RG_NAME" --yes --no-wait
+              echo "⏳ Waiting for deletion to complete..."
+
+              # Esperar hasta que el RG sea eliminado (max 5 minutos)
+              for i in {1..30}; do
+                if ! az group exists --name "$RG_NAME" | grep -q "true"; then
+                  echo "✅ Resource Group deleted successfully"
+                  break
+                fi
+                echo "Waiting... ($i/30)"
+                sleep 10
+              done
+            else
+              echo "✅ Resource Group exists in correct location: $EXISTING_LOCATION"
+            fi
+          fi
+
+      - name: Register required resource providers
+        run: |
+          echo "📋 Registrando proveedores de recursos requeridos..."
+
+          PROVIDERS=(
+            "Microsoft.DocumentDB"
+            "Microsoft.Storage"
+            "Microsoft.Web"
+            "Microsoft.ApiManagement"
+            "Microsoft.NotificationHubs"
+            "Microsoft.KeyVault"
+            "Microsoft.Insights"
+            "Microsoft.OperationalInsights"
+          )
+
+          for PROVIDER in "${PROVIDERS[@]}"; do
+            STATUS=$(az provider show --namespace "$PROVIDER" --query "registrationState" -o tsv 2>/dev/null || echo "NotRegistered")
+
+            if [ "$STATUS" != "Registered" ]; then
+              echo "Registrando $PROVIDER..."
+              az provider register --namespace "$PROVIDER" --wait
+            else
+              echo "✓ $PROVIDER ya está registrado"
+            fi
+          done
+
+          echo "✅ Todos los proveedores están registrados"
+
+      - name: Check for orphaned resources
+        run: |
+          RG_NAME="${{ steps.env.outputs.rg_name }}"
+
+          echo "🔍 Verificando recursos huérfanos en otros resource groups..."
+
+          # Buscar Storage Accounts con el patrón de nombre de RapidGo
+          ORPHANED_STORAGE=$(az storage account list --query "[?starts_with(name, 'az') && contains(name, 'blob')].{Name:name, RG:resourceGroup, Location:location}" -o table 2>/dev/null || echo "")
+
+          if [ -n "$ORPHANED_STORAGE" ]; then
+            echo "⚠️  Storage Accounts encontrados:"
+            echo "$ORPHANED_STORAGE"
+          fi
+
+          # Buscar Cosmos DB con el patrón de nombre de RapidGo
+          ORPHANED_COSMOS=$(az cosmosdb list --query "[?starts_with(name, 'azrapidgo')].{Name:name, RG:resourceGroup, Location:location}" -o table 2>/dev/null || echo "")
+
+          if [ -n "$ORPHANED_COSMOS" ]; then
+            echo "⚠️  Cosmos DB encontrados:"
+            echo "$ORPHANED_COSMOS"
+          fi
+
+          echo "✅ Verificación completada"
+
       - name: Create Resource Group
         run: |
           az group create \
             --name ${{ steps.env.outputs.rg_name }} \
-            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus' }} \
+            --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus2' }} \
             --tags environment=${{ steps.env.outputs.env_name }}
 
   validate:
@@ -73,6 +152,27 @@ jobs:
             --resource-group ${{ needs.create-rg.outputs.rg_name }} \
             --template-file src/infra-arm/main.json \
             --parameters src/infra-arm/azuredeploy.parameters.json
+
+      - name: Rollback on validation failure
+        if: failure()
+        run: |
+          RG="${{ needs.create-rg.outputs.rg_name }}"
+
+          echo "## ⚠️  Validación de plantillas ARM falló" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if az group exists --name "$RG" | grep -q "true"; then
+            echo "### 🗑️  Ejecutando rollback (grupo de recursos vacío)" >> $GITHUB_STEP_SUMMARY
+
+            if az group delete --name "$RG" --yes --no-wait; then
+              echo "✅ Grupo de recursos eliminado" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Error al eliminar grupo de recursos" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Revisa los errores de validación arriba" >> $GITHUB_STEP_SUMMARY
 
   deploy:
     name: Deploy Infrastructure to Azure
@@ -100,7 +200,7 @@ jobs:
             --template-file src/infra-arm/main.json \
             --parameters src/infra-arm/azuredeploy.parameters.json \
             --parameters environmentName=${{ needs.create-rg.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus' }} \
+            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'eastus2' }} \
             --parameters functionAppRuntime=node \
             --parameters cosmosDBFreeTier=true \
             --parameters skuAPIM=Developer \
@@ -144,21 +244,56 @@ jobs:
         if: failure()
         run: |
           RG="${{ needs.create-rg.outputs.rg_name }}"
-          echo "## Fallo en el despliegue de infraestructura" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 🔴 Fallo en el despliegue de infraestructura" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Causas posibles" >> $GITHUB_STEP_SUMMARY
-          echo "- Cuota de suscripcion insuficiente (Cosmos DB free tier ya usado)" >> $GITHUB_STEP_SUMMARY
+
+          # Intentar eliminar el grupo de recursos automáticamente
+          if az group exists --name "$RG" | grep -q "true"; then
+            echo "### 🗑️  Ejecutando rollback automático" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Eliminando grupo de recursos: **$RG**" >> $GITHUB_STEP_SUMMARY
+
+            # Listar recursos que serán eliminados
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Recursos a eliminar:**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            az resource list --resource-group "$RG" --query "[].{Name:name, Type:type}" -o table >> $GITHUB_STEP_SUMMARY || echo "No se pudieron listar recursos" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Ejecutar eliminación
+            echo "🚀 Iniciando eliminación del Resource Group..." | tee -a $GITHUB_STEP_SUMMARY
+
+            if az group delete --name "$RG" --yes --no-wait; then
+              echo "✅ Rollback iniciado exitosamente" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "> La eliminación se está ejecutando en background." >> $GITHUB_STEP_SUMMARY
+              echo "> Puede tardar varios minutos en completarse." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Error al ejecutar rollback automático" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Limpieza manual requerida:**" >> $GITHUB_STEP_SUMMARY
+              echo '```bash' >> $GITHUB_STEP_SUMMARY
+              echo "az group delete --name $RG --yes --no-wait" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "ℹ️  El grupo de recursos no existe, no se requiere rollback" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Causas posibles del fallo" >> $GITHUB_STEP_SUMMARY
+          echo "- Cuota de suscripción insuficiente (Cosmos DB free tier ya usado)" >> $GITHUB_STEP_SUMMARY
           echo "- Nombre de recurso duplicado (Key Vault, Storage Account son globales)" >> $GITHUB_STEP_SUMMARY
+          echo "- Región no permitida en la suscripción" >> $GITHUB_STEP_SUMMARY
           echo "- Error de permisos del Service Principal" >> $GITHUB_STEP_SUMMARY
+          echo "- Timeout en creación de API Management (puede tardar 30-45 min)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Limpieza manual (si es necesario)" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Verificar regiones disponibles" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "az group delete --name $RG --yes --no-wait" >> $GITHUB_STEP_SUMMARY
+          echo "./scripts/check-available-regions.sh" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> El deployment ARM usa modo Incremental: los recursos creados antes del fallo" >> $GITHUB_STEP_SUMMARY
-          echo "> fueron revertidos automaticamente por Azure. Solo es necesario eliminar el RG" >> $GITHUB_STEP_SUMMARY
-          echo "> si quieres limpiar por completo." >> $GITHUB_STEP_SUMMARY
 
       - name: Deployment Summary
         if: success()
