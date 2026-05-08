@@ -70,7 +70,7 @@ En el contexto de RapidGo ofrece las siguientes ventajas:
 
 - Ofrece un **[Free Tier del servicio](https://azure.microsoft.com/en-us/pricing/details/notification-hubs/)** que permite enviar hasta **1 millón de notificaciones al mes**, lo cual se ajusta a las restricciones de presupuesto del proyecto piloto.
 
-#### Desventajas
+#### Desventajas (Limitaciones)
 
 - Depende de servicios externos de notificación denominados **Platform Notification Services (PNS)** como:
 
@@ -105,7 +105,7 @@ En el contexto de RapidGo ofrece las siguientes ventajas:
 
 - Permite conectividad con la **[red telefónica pública (PSTN)](https://learn.microsoft.com/en-us/azure/communication-services/concepts/services)**, habilitando llamadas o envío de mensajes SMS a números telefónicos.
 
-#### Desventajas
+#### Desventajas (Limitaciones)
 
 - No está especializado en el envío de **notificaciones push móviles**, que es el caso principal de RapidGo.
 
@@ -150,7 +150,7 @@ Comparado con **[Azure Communication Services](https://learn.microsoft.com/en-us
 - Costos bajos durante la fase piloto gracias al **free tier del servicio**.
 - Mejora la experiencia del usuario mediante **actualizaciones del pedido en tiempo real**.
 
-### Trade-offs
+### Desventajas (Limitaciones)
 
 - Dependencia de servicios externos de notificación como **FCM** y **APNs**.
 - La entrega final al dispositivo depende de la disponibilidad de estos servicios.
