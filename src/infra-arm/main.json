@@ -29,6 +29,41 @@
       "type": "string",
       "defaultValue": "Developer",
       "allowedValues": ["Developer", "Basic", "Standard"]
+    },
+    "jwtOpenIdConfigUrl": {
+      "type": "string",
+      "defaultValue": "https://rapidgo.auth0.com/.well-known/openid-configuration",
+      "metadata": {
+        "description": "OpenID Connect configuration URL for JWT validation"
+      }
+    },
+    "jwtAudience": {
+      "type": "string",
+      "defaultValue": "https://api.rapidgo.app",
+      "metadata": {
+        "description": "Expected audience (aud) claim in JWT tokens"
+      }
+    },
+    "jwtIssuer": {
+      "type": "string",
+      "defaultValue": "https://rapidgo.auth0.com/",
+      "metadata": {
+        "description": "Expected issuer (iss) claim in JWT tokens"
+      }
+    },
+    "rateLimitCalls": {
+      "type": "int",
+      "defaultValue": 500,
+      "metadata": {
+        "description": "Number of calls allowed per renewal period"
+      }
+    },
+    "rateLimitRenewalPeriod": {
+      "type": "int",
+      "defaultValue": 60,
+      "metadata": {
+        "description": "Renewal period in seconds for rate limiting"
+      }
     }
   },
   "variables": {
@@ -49,7 +84,8 @@
     "appInsightsName": "[concat(variables('functionAppName'), '-insights')]",
     "apimVersion": "2023-05-01-preview",
     "nhVersion": "2023-01-01-preview",
-    "cosmosDBVersion": "2023-11-15"
+    "cosmosDBVersion": "2023-11-15",
+    "apiVersionSetName": "[concat('rapidgo-api-version-set')]"
   },
   "resources": [
     {
@@ -503,19 +539,36 @@
       }
     },
     {
+      "type": "Microsoft.ApiManagement/service/apiVersionSets",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/{1}', variables('apimName'), variables('apiVersionSetName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "RapidGo API Version Set",
+        "description": "Version set for RapidGo API management",
+        "versioningScheme": "Segment",
+        "versionQueryName": "api-version",
+        "versionHeaderName": "X-Api-Version"
+      }
+    },
+    {
       "type": "Microsoft.ApiManagement/service/apis",
       "apiVersion": "[variables('apimVersion')]",
       "name": "[format('{0}/rapidgo-api', variables('apimName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]",
+        "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]"
       ],
       "properties": {
         "displayName": "RapidGo API",
         "description": "API principal para la plataforma de domicilios RapidGo",
         "serviceUrl": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName)]",
-        "path": "api",
+        "path": "api/v1",
         "protocols": ["https"],
         "apiVersion": "v1",
+        "apiVersionSetId": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]",
         "apiRevision": "1",
         "subscriptionRequired": true,
         "authenticationSettings": {
@@ -525,15 +578,15 @@
       }
     },
     {
-      "type": "Microsoft.ApiManagement/service/policies",
+      "type": "Microsoft.ApiManagement/service/apis/policies",
       "apiVersion": "[variables('apimVersion')]",
-      "name": "[format('{0}/policy', variables('apimName'))]",
+      "name": "[format('{0}/rapidgo-api/policy', variables('apimName'))]",
       "dependsOn": [
-        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+        "[resourceId('Microsoft.ApiManagement/service/apis', variables('apimName'), 'rapidgo-api')]"
       ],
       "properties": {
-        "value": "<policies><inbound><base /><rate-limit calls=\"500\" renewal-period=\"60\" /><jwt-validate header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Token JWT inválido o expirado\"><openid-config url=\"https://rapidgo.auth0.com/.well-known/openid-configuration\" /></jwt-validate></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>",
-        "format": "xml"
+        "value": "<policies>\n  <inbound>\n    <base />\n    <rate-limit calls=\"@{{parameters('rateLimitCalls')}}\" renewal-period=\"@{{parameters('rateLimitRenewalPeriod')}}\" />\n    <validate-jwt header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Unauthorized: Invalid or expired JWT token\">\n      <openid-config url=\"@{{parameters('jwtOpenIdConfigUrl')}}\" />\n      <required-claims>\n        <claim name=\"aud\" match=\"all\">\n          <value>@{{parameters('jwtAudience')}}</value>\n        </claim>\n      </required-claims>\n    </validate-jwt>\n    <set-header name=\"X-Forwarded-For\" exists-action=\"override\">\n      <value>@(context.Request.IpAddress)</value>\n    </set-header>\n  </inbound>\n  <backend>\n    <base />\n    <forward-request timeout=\"120\" />\n  </backend>\n  <outbound>\n    <base />\n    <set-header name=\"X-Response-Time\" exists-action=\"override\">\n      <value>@(context.Response.Headers.GetValueOrDefault(\"X-Response-Time\", \"0\"))</value>\n    </set-header>\n    <set-header name=\"X-Powered-By\" exists-action=\"delete\" />\n  </outbound>\n  <on-error>\n    <base />\n    <set-header name=\"X-Error-Source\" exists-action=\"override\">\n      <value>APIM-Gateway</value>\n    </set-header>\n    <set-body>@{\n      return new JObject(\n        new JProperty(\"error\", context.LastError.Source),\n        new JProperty(\"message\", context.LastError.Message),\n        new JProperty(\"timestamp\", DateTime.UtcNow.ToString(\"o\"))\n      ).ToString();\n    }</set-body>\n  </on-error>\n</policies>",
+        "format": "rawxml"
       }
     }
   ],
@@ -561,6 +614,10 @@
     "resourceGroupName": {
       "type": "string",
       "value": "[resourceGroup().name]"
+    },
+    "apiVersionSetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]"
     }
   }
 }

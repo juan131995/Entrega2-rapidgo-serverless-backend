@@ -4,6 +4,158 @@ Guía de solución de problemas comunes durante el despliegue de infraestructura
 
 ---
 
+## 🔴 Error: APIM Policy Validation Errors
+
+### Error 1: "There is no policy matching element name" (jwt-validate)
+
+#### Mensaje completo
+```
+"code":"ValidationError","target":"jwt-validate",
+"message":"Error in element 'jwt-validate' on line 1, column 75: There is no policy matching element name"
+```
+
+#### Causa
+El elemento `<jwt-validate>` NO existe en Azure API Management. El nombre correcto es `<validate-jwt>`.
+
+#### Solución
+```xml
+<!-- INCORRECTO -->
+<jwt-validate header-name="Authorization">
+  <openid-config url="..." />
+</jwt-validate>
+
+<!-- CORRECTO -->
+<validate-jwt header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
+  <openid-config url="https://your-auth-provider/.well-known/openid-configuration" />
+  <required-claims>
+    <claim name="aud" match="all">
+      <value>https://api.rapidgo.app</value>
+    </claim>
+  </required-claims>
+</validate-jwt>
+```
+
+### Error 2: "Element <base/> is not allowed in global context"
+
+#### Mensaje completo
+```
+"code":"ValidationError","target":"base",
+"message":"Error in element 'base' on line 1, column 21: Element <base/> is not allowed in global context"
+```
+
+#### Causa
+El elemento `<base />` solo es válido en políticas de scope API, Operation o Product. NO es permitido en políticas de scope global (service-level).
+
+#### Solución
+Las políticas globales (Microsoft.ApiManagement/service/policies) NO deben incluir `<base />`:
+
+```xml
+<!-- INCORRECTO - Global policy con <base /> -->
+<policies>
+  <inbound>
+    <base />
+    <rate-limit calls="500" renewal-period="60" />
+  </inbound>
+</policies>
+
+<!-- CORRECTO - Global policy sin <base /> -->
+<policies>
+  <inbound>
+    <rate-limit-by-key calls="500" renewal-period="60" counter-key="@(context.Request.IpAddress)" />
+  </inbound>
+</policies>
+
+<!-- CORRECTO - API-level policy CON <base /> -->
+<policies>
+  <inbound>
+    <base />
+    <validate-jwt header-name="Authorization">
+      <openid-config url="..." />
+    </validate-jwt>
+  </inbound>
+</policies>
+```
+
+### Error 3: "Policy is not allowed in the specified scope" (rate-limit)
+
+#### Mensaje completo
+```
+"code":"ValidationError","target":"rate-limit",
+"message":"Error in element 'rate-limit' on line 1, column 29: Policy is not allowed in the specified scope"
+```
+
+#### Causa
+La policy `rate-limit` tiene restricciones de scope. En el scope global, se debe usar `rate-limit-by-key` en lugar de `rate-limit`.
+
+#### Solución
+```xml
+<!-- INCORRECTO - rate-limit en scope global -->
+<rate-limit calls="500" renewal-period="60" />
+
+<!-- CORRECTO - rate-limit-by-key en scope global -->
+<rate-limit-by-key calls="500" renewal-period="60" counter-key="@(context.Request.IpAddress)" />
+
+<!-- CORRECTO - rate-limit en scope API/Operation -->
+<rate-limit calls="500" renewal-period="60" />
+```
+
+### Error 4: "Can't set VersionName when ApiVersionSetId is not set"
+
+#### Mensaje completo
+```
+"code":"ValidationError","target":"ApiVersion",
+"message":"Can't set VersionName when ApiVersionSetId is not set."
+```
+
+#### Causa
+Cuando se define `apiVersion` en una API, se requiere crear primero un `apiVersionSet` y referenciarlo.
+
+#### Solución (ARM)
+```json
+{
+  "type": "Microsoft.ApiManagement/service/apiVersionSets",
+  "apiVersion": "2023-05-01-preview",
+  "name": "[format('{0}/rapidgo-api-version-set', variables('apimName'))]",
+  "dependsOn": [
+    "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+  ],
+  "properties": {
+    "displayName": "RapidGo API Version Set",
+    "versioningScheme": "Segment"
+  }
+},
+{
+  "type": "Microsoft.ApiManagement/service/apis",
+  "properties": {
+    "apiVersion": "v1",
+    "apiVersionSetId": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), 'rapidgo-api-version-set')]"
+  }
+}
+```
+
+### Error 5: "Property at path location cannot be changed"
+
+#### Causa
+La propiedad `location` es inmutable en Azure. No se puede cambiar la región de un recurso existente.
+
+#### Solución
+**Opción 1: Eliminar y recrear el Resource Group**
+```bash
+./scripts/rollback-deployment.sh dev
+./scripts/cleanup-orphaned-resources.sh
+```
+
+**Opción 2: Cambiar environmentName para generar nombres únicos**
+```json
+{
+  "environmentName": {
+    "value": "dev2"
+  }
+}
+```
+
+---
+
 ## 🔴 Error: "Property at path location cannot be changed"
 
 ### Causa
