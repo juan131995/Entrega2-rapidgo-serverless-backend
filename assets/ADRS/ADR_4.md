@@ -21,7 +21,7 @@ Adicionalmente:
 - Fortalece la seguridad de la app móvil al acceder por url con protocolos.
 - Dispone de una disponibilidad del 99.9% y una replicación eficaz en distintas regiones con mejor disponibilidad. ([**ACID**](https://learn.microsoft.com/es-es/azure/azure-sql/database/features-comparison)).
 - Optimiza el rendimiento y minimiza la latencia al momento de usar la app móvil.
-- Se puede elegir diferentes capas de almacenamiento para optimizar costos y rendimientos según las necesidades, ([**desde $0,15 por cada gb que se utilice**]).https://azure.microsoft.com/es-es/pricing/details/storage/blobs/?msockid=3670edb92d7a635123a4f9272c7b6214
+- Se puede elegir diferentes capas de almacenamiento para optimizar costos y rendimientos según las necesidades, ([**desde $0,15 por cada gb que se utilice**](https://azure.microsoft.com/es-es/pricing/details/storage/blobs/?msockid=3670edb92d7a635123a4f9272c7b6214)
   
 #### Desventajas
 
