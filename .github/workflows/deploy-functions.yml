@@ -62,6 +62,32 @@ jobs:
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "Found Function App: $APP_NAME"
 
+      - name: Capture pre-deployment state
+        id: pre-deploy
+        continue-on-error: true
+        run: |
+          APP="${{ steps.get-app-name.outputs.app_name }}"
+          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
+
+          # Capturar deployment slot activo
+          ACTIVE_SLOT=$(az functionapp show --name "$APP" --resource-group "$RG" --query "state" -o tsv)
+          echo "active_slot=$ACTIVE_SLOT" >> $GITHUB_OUTPUT
+
+          # Capturar últimas 5 deployments para rollback
+          DEPLOYMENTS=$(az webapp deployment list --name "$APP" --resource-group "$RG" --query "[0:5].id" -o tsv 2>/dev/null || echo "")
+          echo "Available deployments for potential rollback:"
+          echo "$DEPLOYMENTS"
+
+          # Guardar la versión actual del runtime
+          CURRENT_VERSION=$(az functionapp config show --name "$APP" --resource-group "$RG" --query "linuxFxVersion" -o tsv 2>/dev/null || echo "unknown")
+          echo "current_runtime_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current runtime: $CURRENT_VERSION"
+
+          # Verificar que la app está running
+          APP_STATE=$(az functionapp show --name "$APP" --resource-group "$RG" --query "state" -o tsv)
+          echo "app_state_before=$APP_STATE" >> $GITHUB_OUTPUT
+          echo "App state before deployment: $APP_STATE"
+
       - name: Deploy Functions to Azure
         id: fa
         uses: Azure/functions-action@v1
@@ -73,26 +99,67 @@ jobs:
           respect-funcignore: true
 
       - name: Rollback on failure
-        if: failure()
+        if: failure() && steps.fa.conclusion == 'failure'
         run: |
           APP="${{ steps.get-app-name.outputs.app_name }}"
           RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
-          echo "## Fallo en el despliegue de funciones" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Que paso?" >> $GITHUB_STEP_SUMMARY
-          echo "- El deployment de la Function App **$APP** fallo." >> $GITHUB_STEP_SUMMARY
-          echo "- La version anterior del codigo sigue activa (zip deployment es atomico)." >> $GITHUB_STEP_SUMMARY
-          echo "- No se requieren acciones de rollback." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Causas posibles" >> $GITHUB_STEP_SUMMARY
-          echo "- Error de compilacion o dependencias faltantes en package.json" >> $GITHUB_STEP_SUMMARY
-          echo "- La Function App no existe (ejecutar primero deploy-infra)" >> $GITHUB_STEP_SUMMARY
-          echo "- Problema de permisos del Service Principal sobre la Function App" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Para verificar el estado actual" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "az functionapp show --name $APP --resource-group $RG --query 'state' -o tsv" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "## 🔴 Function Deployment Failed - Verificando Estado" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          # Verificar estado actual de la Function App
+          CURRENT_STATE=$(az functionapp show --name "$APP" --resource-group "$RG" --query "state" -o tsv 2>/dev/null || echo "unknown")
+          PREVIOUS_STATE="${{ steps.pre-deploy.outputs.app_state_before }}"
+
+          echo "### Estado de la Function App" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- Estado previo al deployment: **$PREVIOUS_STATE**" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- Estado actual: **$CURRENT_STATE**" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          # Verificar si el deployment dejó la app en mal estado
+          if [ "$CURRENT_STATE" != "Running" ] && [ "$PREVIOUS_STATE" == "Running" ]; then
+            echo "⚠️ La Function App dejó de funcionar - intentando restaurar" | tee -a $GITHUB_STEP_SUMMARY
+
+            # Intentar reiniciar la Function App
+            echo "Reiniciando Function App..." | tee -a $GITHUB_STEP_SUMMARY
+            az functionapp restart --name "$APP" --resource-group "$RG"
+
+            # Esperar y verificar
+            sleep 30
+            NEW_STATE=$(az functionapp show --name "$APP" --resource-group "$RG" --query "state" -o tsv)
+            echo "Estado después del reinicio: **$NEW_STATE**" | tee -a $GITHUB_STEP_SUMMARY
+
+            if [ "$NEW_STATE" == "Running" ]; then
+              echo "✓ Function App restaurada exitosamente" | tee -a $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ No se pudo restaurar automáticamente - se requiere intervención manual" | tee -a $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "✓ La Function App está en estado Running" | tee -a $GITHUB_STEP_SUMMARY
+            echo "✓ El deployment atómico previno corrupción del código" | tee -a $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "### Posibles Causas del Fallo" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- Error de compilación o dependencias faltantes en package.json" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- Timeout durante el zip deployment" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- Problema de permisos del Service Principal" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- Configuración incorrecta en app settings" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          echo "### Verificación Manual Recomendada" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```bash' | tee -a $GITHUB_STEP_SUMMARY
+          echo "# Verificar estado" | tee -a $GITHUB_STEP_SUMMARY
+          echo "az functionapp show --name $APP --resource-group $RG --query 'state' -o tsv" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "# Ver logs de deployment" | tee -a $GITHUB_STEP_SUMMARY
+          echo "az webapp log deployment show --name $APP --resource-group $RG" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "# Ver logs en tiempo real" | tee -a $GITHUB_STEP_SUMMARY
+          echo "az webapp log tail --name $APP --resource-group $RG" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' | tee -a $GITHUB_STEP_SUMMARY
+
+          exit 1
 
       - name: Deployment Summary
         if: success()

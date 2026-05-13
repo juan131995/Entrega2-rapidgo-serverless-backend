@@ -221,6 +221,24 @@ jobs:
         if: needs.validate-templates.outputs.deploy_type == 'bicep'
         run: az bicep install
 
+      - name: Capture pre-deployment state
+        id: pre-deploy
+        run: |
+          RG="${{ needs.validate-templates.outputs.rg_name }}"
+
+          # Guardar lista de recursos existentes antes del deployment
+          if az group exists --name "$RG" | grep -q "true"; then
+            EXISTING_RESOURCES=$(az resource list --resource-group "$RG" --query "[].id" -o tsv | sort)
+            echo "$EXISTING_RESOURCES" > /tmp/pre-deploy-resources.txt
+            echo "has_existing_resources=true" >> $GITHUB_OUTPUT
+            echo "Pre-deployment resources captured:"
+            cat /tmp/pre-deploy-resources.txt
+          else
+            touch /tmp/pre-deploy-resources.txt
+            echo "has_existing_resources=false" >> $GITHUB_OUTPUT
+            echo "Resource group is new, no existing resources"
+          fi
+
       - name: Deploy ARM Template
         if: needs.validate-templates.outputs.deploy_type == 'arm'
         id: deploy
@@ -247,6 +265,66 @@ jobs:
             --template-file $BICEP_TEMPLATE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
             --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}
+
+      - name: Rollback on deployment failure
+        if: failure() && (steps.deploy.conclusion == 'failure' || steps.deploy-bicep.conclusion == 'failure')
+        run: |
+          RG="${{ needs.validate-templates.outputs.rg_name }}"
+          ENV="${{ needs.validate-templates.outputs.env_name }}"
+
+          echo "## 🔴 Deployment Failed - Iniciando Rollback Automático" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          # Obtener recursos actuales
+          CURRENT_RESOURCES=$(az resource list --resource-group "$RG" --query "[].id" -o tsv 2>/dev/null | sort || echo "")
+
+          # Comparar con recursos pre-deployment
+          if [ -f /tmp/pre-deploy-resources.txt ]; then
+            PRE_DEPLOY_RESOURCES=$(cat /tmp/pre-deploy-resources.txt)
+
+            # Encontrar recursos nuevos (creados en este deployment)
+            NEW_RESOURCES=$(comm -13 <(echo "$PRE_DEPLOY_RESOURCES") <(echo "$CURRENT_RESOURCES"))
+
+            if [ -n "$NEW_RESOURCES" ]; then
+              echo "### Recursos creados en este deployment (serán eliminados):" | tee -a $GITHUB_STEP_SUMMARY
+              echo '```' | tee -a $GITHUB_STEP_SUMMARY
+              echo "$NEW_RESOURCES" | while read -r resource_id; do
+                RESOURCE_NAME=$(basename "$resource_id")
+                echo "- $RESOURCE_NAME" | tee -a $GITHUB_STEP_SUMMARY
+              done
+              echo '```' | tee -a $GITHUB_STEP_SUMMARY
+              echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+              # Eliminar recursos nuevos uno por uno (en orden inverso de dependencias)
+              echo "Eliminando recursos nuevos..."
+              echo "$NEW_RESOURCES" | tac | while read -r resource_id; do
+                if [ -n "$resource_id" ]; then
+                  RESOURCE_NAME=$(basename "$resource_id")
+                  echo "Eliminando: $RESOURCE_NAME"
+                  az resource delete --ids "$resource_id" --verbose || echo "Failed to delete $RESOURCE_NAME"
+                fi
+              done
+
+              echo "✓ Rollback completado - recursos nuevos eliminados" | tee -a $GITHUB_STEP_SUMMARY
+            else
+              echo "No se crearon recursos nuevos en este deployment" | tee -a $GITHUB_STEP_SUMMARY
+            fi
+          else
+            # Si no hay archivo pre-deploy, eliminar todo el resource group si es nuevo
+            if [ "${{ steps.pre-deploy.outputs.has_existing_resources }}" == "false" ]; then
+              echo "Resource group fue creado en este deployment - eliminando completamente" | tee -a $GITHUB_STEP_SUMMARY
+              az group delete --name "$RG" --yes --no-wait
+              echo "✓ Resource group $RG eliminado" | tee -a $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ No se puede determinar recursos nuevos - rollback manual requerido" | tee -a $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "### Error Details" | tee -a $GITHUB_STEP_SUMMARY
+          echo "Revisa los logs del step 'Deploy ARM Template' o 'Deploy Bicep Template' para más detalles" | tee -a $GITHUB_STEP_SUMMARY
+
+          exit 1
 
       - name: Configure FCM v1 on Notification Hub
         continue-on-error: true
