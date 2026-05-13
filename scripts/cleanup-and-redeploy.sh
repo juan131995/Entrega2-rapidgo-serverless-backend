@@ -56,6 +56,28 @@ else
     echo "Resource Group no existe: $RG_NAME"
 fi
 
+# Buscar y eliminar resource groups "managed" de Application Insights
+echo ""
+echo "Buscando resource groups 'managed' de Application Insights..."
+MANAGED_RGS=$(az group list --query "[?contains(name, 'managed') && contains(name, 'insights')].name" -o tsv)
+
+if [ -n "$MANAGED_RGS" ]; then
+    echo "Resource groups 'managed' encontrados:"
+    echo "$MANAGED_RGS"
+    echo ""
+    read -p "¿Deseas eliminar estos resource groups? (yes/no): " CONFIRM_MANAGED
+
+    if [ "$CONFIRM_MANAGED" == "yes" ]; then
+        while IFS= read -r MANAGED_RG; do
+            echo "Eliminando: $MANAGED_RG"
+            az group delete --name "$MANAGED_RG" --yes --no-wait
+        done <<< "$MANAGED_RGS"
+        echo "✓ Eliminación de resource groups 'managed' iniciada"
+    fi
+else
+    echo "No se encontraron resource groups 'managed'"
+fi
+
 echo ""
 echo "========================================="
 echo "Ahora puedes ejecutar el workflow de GitHub Actions:"

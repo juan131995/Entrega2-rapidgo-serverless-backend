@@ -81,7 +81,8 @@
     "notificationHubNamespace": "[concat('az-rapidgo-', variables('envName'), '-notif-ns')]",
     "notificationHubName": "[concat('az-rapidgo-', variables('envName'), '-notifications')]",
     "keyVaultName": "[toLower(take(concat('az-rapidgo-', variables('envName'), '-kv-', variables('uniqueSuffix')), 24))]",
-    "appInsightsName": "[concat(variables('functionAppName'), '-insights')]",
+    "logAnalyticsName": "[concat('az-rapidgo-', variables('envName'), '-logs-', variables('uniqueSuffix'))]",
+    "appInsightsName": "[concat('az-rapidgo-', variables('envName'), '-insights-', variables('uniqueSuffix'))]",
     "apimVersion": "2023-05-01-preview",
     "nhVersion": "2023-01-01-preview",
     "cosmosDBVersion": "2023-11-15",
@@ -396,17 +397,40 @@
       }
     },
     {
-      "type": "Microsoft.Insights/components",
-      "apiVersion": "2020-02-02",
-      "name": "[variables('appInsightsName')]",
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('logAnalyticsName')]",
       "location": "[parameters('location')]",
-      "kind": "web",
       "tags": {
         "environment": "[parameters('environmentName')]",
         "managedBy": "arm-template"
       },
       "properties": {
-        "Application_Type": "web"
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30,
+        "features": {
+          "enableLogAccessUsingOnlyResourcePermissions": true
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
       }
     },
     {
@@ -618,6 +642,14 @@
     "apiVersionSetId": {
       "type": "string",
       "value": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+    },
+    "appInsightsInstrumentationKey": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
     }
   }
 }
