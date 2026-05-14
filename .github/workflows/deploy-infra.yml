@@ -166,8 +166,7 @@ jobs:
             --name "validate-rapidgo-${{ steps.env.outputs.env_name }}-$(date +%Y%m%d%H%M%S)" \
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
-            --parameters environmentName=${{ steps.env.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}
+            --parameters environmentName=${{ steps.env.outputs.env_name }}
 
       - name: Validate Bicep Template
         if: steps.env.outputs.deploy_type == 'bicep'
@@ -176,8 +175,7 @@ jobs:
             --name "validate-rapidgo-${{ steps.env.outputs.env_name }}-$(date +%Y%m%d%H%M%S)" \
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --template-file $BICEP_TEMPLATE \
-            --parameters environmentName=${{ steps.env.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}
+            --parameters environmentName=${{ steps.env.outputs.env_name }}
 
       - name: What-If Analysis (ARM)
         if: steps.env.outputs.deploy_type == 'arm' && github.event_name == 'pull_request'
@@ -250,7 +248,6 @@ jobs:
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --mode Incremental \
             --query properties.outputs
 
@@ -263,8 +260,7 @@ jobs:
             --name bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }} \
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --template-file $BICEP_TEMPLATE \
-            --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
-            --parameters location=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}
+            --parameters environmentName=${{ needs.validate-templates.outputs.env_name }}
 
       - name: Rollback on deployment failure
         if: failure() && (steps.deploy.conclusion == 'failure' || steps.deploy-bicep.conclusion == 'failure')

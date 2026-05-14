@@ -9,13 +9,6 @@
         "description": "Prefix name used for all deployed resources"
       }
     },
-    "location": {
-      "type": "string",
-      "defaultValue": "centralus",
-      "metadata": {
-        "description": "Azure region for all resources"
-      }
-    },
     "functionAppRuntime": {
       "type": "string",
       "defaultValue": "node",
@@ -93,7 +86,7 @@
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-01-01",
       "name": "[variables('blobStorageAccountName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "sku": {
         "name": "Standard_LRS"
       },
@@ -152,7 +145,7 @@
       "type": "Microsoft.DocumentDB/databaseAccounts",
       "apiVersion": "[variables('cosmosDBVersion')]",
       "name": "[variables('cosmosAccountName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "kind": "GlobalDocumentDB",
       "tags": {
         "environment": "[parameters('environmentName')]",
@@ -163,7 +156,7 @@
         "databaseAccountOfferType": "Standard",
         "locations": [
           {
-            "locationName": "[parameters('location')]",
+            "locationName": "[resourceGroup().location]",
             "failoverPriority": 0,
             "isZoneRedundant": false
           }
@@ -267,7 +260,7 @@
       "type": "Microsoft.NotificationHubs/namespaces",
       "apiVersion": "[variables('nhVersion')]",
       "name": "[variables('notificationHubNamespace')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "sku": {
         "name": "Free"
       },
@@ -283,7 +276,7 @@
       "type": "Microsoft.NotificationHubs/namespaces/notificationHubs",
       "apiVersion": "[variables('nhVersion')]",
       "name": "[format('{0}/{1}', variables('notificationHubNamespace'), variables('notificationHubName'))]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "dependsOn": [
         "[resourceId('Microsoft.NotificationHubs/namespaces', variables('notificationHubNamespace'))]"
       ],
@@ -300,7 +293,7 @@
       "type": "Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules",
       "apiVersion": "[variables('nhVersion')]",
       "name": "[format('{0}/{1}/DefaultFullSharedAccessSignature', variables('notificationHubNamespace'), variables('notificationHubName'))]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "dependsOn": [
         "[resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs', variables('notificationHubNamespace'), variables('notificationHubName'))]"
       ],
@@ -312,7 +305,7 @@
       "type": "Microsoft.KeyVault/vaults",
       "apiVersion": "2023-07-01",
       "name": "[variables('keyVaultName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "tags": {
         "environment": "[parameters('environmentName')]",
         "managedBy": "arm-template"
@@ -368,7 +361,7 @@
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-01-01",
       "name": "[variables('storageAccountName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "sku": {
         "name": "Standard_LRS"
       },
@@ -382,7 +375,7 @@
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2022-09-01",
       "name": "[variables('functionPlanName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "sku": {
         "name": "Y1",
         "tier": "Dynamic"
@@ -400,7 +393,7 @@
       "type": "Microsoft.OperationalInsights/workspaces",
       "apiVersion": "2022-10-01",
       "name": "[variables('logAnalyticsName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "tags": {
         "environment": "[parameters('environmentName')]",
         "managedBy": "arm-template"
@@ -419,7 +412,7 @@
       "type": "Microsoft.Insights/components",
       "apiVersion": "2020-02-02",
       "name": "[variables('appInsightsName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "kind": "web",
       "dependsOn": [
         "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
@@ -437,7 +430,7 @@
       "type": "Microsoft.Web/sites",
       "apiVersion": "2022-09-01",
       "name": "[variables('functionAppName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "kind": "functionapp,linux",
       "identity": {
         "type": "SystemAssigned"
@@ -537,7 +530,7 @@
       "type": "Microsoft.ApiManagement/service",
       "apiVersion": "[variables('apimVersion')]",
       "name": "[variables('apimName')]",
-      "location": "[parameters('location')]",
+      "location": "[resourceGroup().location]",
       "dependsOn": [
         "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
       ],
