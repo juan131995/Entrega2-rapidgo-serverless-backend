@@ -5,9 +5,6 @@
     "environmentName": {
       "value": "prod"
     },
-    "location": {
-      "value": "centralus"
-    },
     "functionAppRuntime": {
       "value": "node"
     },
