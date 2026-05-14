@@ -85,22 +85,6 @@ Descomposición interna de la capa de lógica de negocio, mostrando las funcione
 
 ---
 
-## Stack Tecnológico
-
-| Capa | Tecnología |
-|---|---|
-| Backend serverless | Azure Functions (Node.js) |
-| API Gateway | Azure API Management |
-| Base de datos | Azure Cosmos DB (NoSQL) |
-| Almacenamiento de archivos | Azure Blob Storage |
-| Notificaciones push | Azure Notification Hubs |
-| Cliente móvil | React Native |
-| Push Android | Firebase Cloud Messaging (FCM) |
-| Push iOS | Apple Push Notification Service (APNs) |
-| Pruebas de API | Postman |
-
----
-
 ## Decisiones Arquitectónicas (ADR)
 
 Las decisiones arquitectónicas fundamentales se documentan en archivos individuales dentro de [`assets/ADRS/`](assets/ADRS/). Cada ADR incluye el contexto, las alternativas evaluadas, la decisión adoptada y sus consecuencias.
@@ -114,3 +98,19 @@ Las decisiones arquitectónicas fundamentales se documentan en archivos individu
 | ADR-005 | Azure Notification Hubs sobre Azure Communication Services | [`assets/ADRS/ADR 5.md`](assets/ADRS/ADR_5.md) |
 
 Cada archivo contiene la evaluación técnica completa con tabla de puntuación por requerimiento no funcional y justificación detallada.
+
+---
+
+## Stack Tecnológico
+
+| Capa | Tecnología |
+|---|---|
+| Backend serverless | Azure Functions (Node.js) |
+| API Gateway | Azure API Management |
+| Base de datos | Azure Cosmos DB (NoSQL) |
+| Almacenamiento de archivos | Azure Blob Storage |
+| Notificaciones push | Azure Notification Hubs |
+| Cliente móvil | React Native |
+| Push Android | Firebase Cloud Messaging (FCM) |
+| Push iOS | Apple Push Notification Service (APNs) |
+| Pruebas de API | Postman |

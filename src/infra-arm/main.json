@@ -72,21 +72,21 @@
     "storageAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'func', variables('uniqueSuffix')))]",
     "functionAppName": "[concat('az-rapidgo-', variables('envName'), '-func-', variables('uniqueSuffix'))]",
     "functionPlanName": "[concat('az-rapidgo-', variables('envName'), '-plan-', variables('uniqueSuffix'))]",
-    "apimName": "[concat('az-rapidgo-', variables('envName'), '-apim')]",
+    "apimName": "[concat('az-rapidgo-', variables('envName'), '-apim-', variables('uniqueSuffix'))]",
     "cosmosAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'db', variables('uniqueSuffix')))]",
-    "cosmosDatabaseName": "[concat('az-rapidgo-', variables('envName'), '-db')]",
-    "cosmosContainerName": "pedidos",
+    "cosmosDatabaseName": "[concat('az-rapidgo-', variables('envName'), '-db-', variables('uniqueSuffix'))]",
+    "cosmosContainerName": "[concat('pedidos-', variables('uniqueSuffix'))]",
     "blobStorageAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'blob', variables('uniqueSuffix')))]",
-    "blobContainerName": "entregas",
-    "notificationHubNamespace": "[concat('az-rapidgo-', variables('envName'), '-notif-ns')]",
-    "notificationHubName": "[concat('az-rapidgo-', variables('envName'), '-notifications')]",
+    "blobContainerName": "[concat('entregas-', variables('uniqueSuffix'))]",
+    "notificationHubNamespace": "[concat('az-rapidgo-', variables('envName'), '-notif-ns-', variables('uniqueSuffix'))]",
+    "notificationHubName": "[concat('az-rapidgo-', variables('envName'), '-notifications-', variables('uniqueSuffix'))]",
     "keyVaultName": "[toLower(take(concat('az-rapidgo-', variables('envName'), '-kv-', variables('uniqueSuffix')), 24))]",
     "logAnalyticsName": "[concat('az-rapidgo-', variables('envName'), '-logs-', variables('uniqueSuffix'))]",
     "appInsightsName": "[concat('az-rapidgo-', variables('envName'), '-insights-', variables('uniqueSuffix'))]",
     "apimVersion": "2023-05-01-preview",
     "nhVersion": "2023-01-01-preview",
     "cosmosDBVersion": "2023-11-15",
-    "apiVersionSetName": "[concat('rapidgo-api-version-set')]"
+    "apiVersionSetName": "[concat('rapidgo-api-version-set-', variables('uniqueSuffix'))]"
   },
   "resources": [
     {
