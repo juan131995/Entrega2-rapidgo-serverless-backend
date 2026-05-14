@@ -55,7 +55,7 @@
       "type": "int",
       "defaultValue": 500,
       "metadata": {
-        "description": "Number of calls allowed per renewal period"
+        "description": "Number of calls allowed per renewal period" 
       }
     },
     "rateLimitRenewalPeriod": {
