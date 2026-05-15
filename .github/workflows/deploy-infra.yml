@@ -151,50 +151,66 @@ jobs:
             fi
           done
 
-      - name: Purge soft-deleted resources
+      - name: Purge soft-deleted resources (Preventive)
         run: |
           LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}"
 
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Purging soft-deleted resources..."
+          echo "PRE-DEPLOYMENT: Purging soft-deleted resources"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          # Purge soft-deleted APIM services
-          echo "Checking for soft-deleted APIM services..."
-          DELETED_APIM=$(az apim deletedservice list --query "[?location=='$LOCATION' && starts_with(serviceName, 'az-rapidgo')].serviceName" -o tsv 2>/dev/null || echo "")
+          # Purge ALL soft-deleted APIM services (any location)
+          echo "Checking for soft-deleted APIM services (all locations)..."
+          DELETED_APIM=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].{name:serviceName, location:location}" -o json 2>/dev/null || echo "[]")
 
-          if [ -n "$DELETED_APIM" ]; then
+          if [ "$DELETED_APIM" != "[]" ]; then
             echo "Found soft-deleted APIM services:"
-            echo "$DELETED_APIM"
-            for APIM in $DELETED_APIM; do
-              echo "Purging APIM: $APIM"
-              az apim deletedservice purge --service-name "$APIM" --location "$LOCATION" 2>/dev/null || echo "Failed to purge $APIM (may not exist)"
+            echo "$DELETED_APIM" | jq -r '.[] | "  - \(.name) in \(.location)"'
+
+            echo "$DELETED_APIM" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
+              echo "Purging APIM: $NAME in $LOC"
+              az apim deletedservice purge --service-name "$NAME" --location "$LOC" 2>&1 || echo "⚠️ Failed to purge $NAME"
             done
-            echo "✅ APIM purge complete"
+
+            # Wait for APIM purge to complete
+            echo "⏱️ Waiting 2 minutes for APIM purge to complete..."
+            sleep 120
+
+            # Verify purge completed
+            STILL_EXISTS=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].serviceName" -o tsv 2>/dev/null || echo "")
+            if [ -n "$STILL_EXISTS" ]; then
+              echo "⚠️ WARNING: Some APIM services still in soft-deleted state:"
+              echo "$STILL_EXISTS"
+              echo "Waiting another 2 minutes..."
+              sleep 120
+            else
+              echo "✅ All APIM services purged successfully"
+            fi
           else
             echo "✅ No APIM services to purge"
           fi
 
-          # Purge soft-deleted Key Vaults
+          # Purge ALL soft-deleted Key Vaults (any location)
           echo ""
-          echo "Checking for soft-deleted Key Vaults..."
-          DELETED_KV=$(az keyvault list-deleted --query "[?properties.location=='$LOCATION' && starts_with(name, 'az-rapidgo')].name" -o tsv 2>/dev/null || echo "")
+          echo "Checking for soft-deleted Key Vaults (all locations)..."
+          DELETED_KV=$(az keyvault list-deleted --query "[?starts_with(name, 'az-rapidgo')].{name:name, location:properties.location}" -o json 2>/dev/null || echo "[]")
 
-          if [ -n "$DELETED_KV" ]; then
+          if [ "$DELETED_KV" != "[]" ]; then
             echo "Found soft-deleted Key Vaults:"
-            echo "$DELETED_KV"
-            for KV in $DELETED_KV; do
-              echo "Purging Key Vault: $KV"
-              az keyvault purge --name "$KV" --location "$LOCATION" 2>/dev/null || echo "Failed to purge $KV (may not exist)"
+            echo "$DELETED_KV" | jq -r '.[] | "  - \(.name) in \(.location)"'
+
+            echo "$DELETED_KV" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
+              echo "Purging Key Vault: $NAME in $LOC"
+              az keyvault purge --name "$NAME" --location "$LOC" 2>&1 || echo "⚠️ Failed to purge $NAME"
             done
-            echo "✅ Key Vault purge complete"
+            echo "✅ Key Vault purge initiated"
           else
             echo "✅ No Key Vaults to purge"
           fi
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Soft-delete purge complete"
+          echo "✅ Pre-deployment purge complete"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: Create Resource Group
@@ -303,63 +319,123 @@ jobs:
         id: cleanup-retry
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "⚠️ First deployment failed - attempting cleanup"
+          echo "⚠️ First deployment failed - FULL CLEANUP"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}"
           RG="${{ needs.validate-templates.outputs.rg_name }}"
 
-          # Check for soft-deleted APIM
+          # STEP 1: DELETE RESOURCE GROUP COMPLETELY
+          echo ""
+          echo "STEP 1: Deleting resource group completely..."
+          echo "This will generate new unique names on recreation"
+
+          if az group exists --name "$RG" | grep -q "true"; then
+            echo "Deleting resource group: $RG"
+            az group delete --name "$RG" --yes --no-wait
+
+            # Wait for complete deletion (up to 10 minutes)
+            echo "Waiting for resource group deletion..."
+            for i in {1..120}; do
+              if ! az group exists --name "$RG" | grep -q "true"; then
+                echo "✅ Resource group deleted successfully"
+                break
+              fi
+              if [ $((i % 10)) -eq 0 ]; then
+                echo "Still deleting... ($i/120) - $(($i * 5 / 60)) minutes elapsed"
+              fi
+              sleep 5
+            done
+
+            # Verify deletion
+            if az group exists --name "$RG" | grep -q "true"; then
+              echo "❌ ERROR: Resource group still exists after 10 minutes"
+              exit 1
+            fi
+          else
+            echo "Resource group doesn't exist, skipping deletion"
+          fi
+
+          # STEP 2: PURGE ALL SOFT-DELETED RESOURCES
+          echo ""
+          echo "STEP 2: Purging all soft-deleted resources..."
+
+          # Purge APIM services
           echo "Purging soft-deleted APIM services..."
           DELETED_APIM=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].{name:serviceName, location:location}" -o json 2>/dev/null || echo "[]")
 
           if [ "$DELETED_APIM" != "[]" ]; then
+            echo "Found soft-deleted APIM services:"
+            echo "$DELETED_APIM" | jq -r '.[] | "  - \(.name) in \(.location)"'
+
             echo "$DELETED_APIM" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
               echo "Purging APIM: $NAME in $LOC"
-              az apim deletedservice purge --service-name "$NAME" --location "$LOC" 2>/dev/null || echo "Failed to purge $NAME"
+              az apim deletedservice purge --service-name "$NAME" --location "$LOC" 2>&1 || echo "⚠️ Failed to purge $NAME (may already be purging)"
             done
+          else
+            echo "✅ No soft-deleted APIM services found"
           fi
 
-          # Check for soft-deleted Key Vaults
+          # Purge Key Vaults
+          echo ""
           echo "Purging soft-deleted Key Vaults..."
           DELETED_KV=$(az keyvault list-deleted --query "[?starts_with(name, 'az-rapidgo')].{name:name, location:properties.location}" -o json 2>/dev/null || echo "[]")
 
           if [ "$DELETED_KV" != "[]" ]; then
+            echo "Found soft-deleted Key Vaults:"
+            echo "$DELETED_KV" | jq -r '.[] | "  - \(.name) in \(.location)"'
+
             echo "$DELETED_KV" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
               echo "Purging Key Vault: $NAME in $LOC"
-              az keyvault purge --name "$NAME" --location "$LOC" 2>/dev/null || echo "Failed to purge $NAME"
+              az keyvault purge --name "$NAME" --location "$LOC" 2>&1 || echo "⚠️ Failed to purge $NAME (may already be purging)"
             done
+          else
+            echo "✅ No soft-deleted Key Vaults found"
           fi
 
-          # Delete and recreate resource group if location conflict
-          if az group exists --name "$RG" | grep -q "true"; then
-            echo "Checking for location conflicts..."
-            EXISTING_LOCATION=$(az group show --name "$RG" --query location -o tsv)
-            if [ "$EXISTING_LOCATION" != "$LOCATION" ]; then
-              echo "Location mismatch detected: $EXISTING_LOCATION vs $LOCATION"
-              echo "Deleting and recreating resource group..."
-              az group delete --name "$RG" --yes --no-wait
+          # STEP 3: WAIT FOR PURGE COMPLETION
+          echo ""
+          echo "STEP 3: Waiting for purge operations to complete..."
+          echo "⏱️ Waiting 5 minutes for APIM and Key Vault purge to complete..."
 
-              # Wait for deletion
-              for i in {1..60}; do
-                if ! az group exists --name "$RG" | grep -q "true"; then
-                  echo "Resource group deleted"
-                  break
-                fi
-                echo "Waiting for deletion... ($i/60)"
-                sleep 5
-              done
+          for i in {1..30}; do
+            sleep 10
+            if [ $((i % 6)) -eq 0 ]; then
+              MINS=$((i / 6))
+              echo "  ${MINS} minute(s) elapsed..."
 
-              # Recreate resource group
-              az group create --name "$RG" --location "$LOCATION" --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions
+              # Check if purge is complete
+              STILL_DELETED_APIM=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].serviceName" -o tsv 2>/dev/null || echo "")
+              STILL_DELETED_KV=$(az keyvault list-deleted --query "[?starts_with(name, 'az-rapidgo')].name" -o tsv 2>/dev/null || echo "")
+
+              if [ -z "$STILL_DELETED_APIM" ] && [ -z "$STILL_DELETED_KV" ]; then
+                echo "✅ All soft-deleted resources purged successfully!"
+                break
+              fi
+
+              if [ -n "$STILL_DELETED_APIM" ]; then
+                echo "  ⏳ Still purging APIM: $STILL_DELETED_APIM"
+              fi
+              if [ -n "$STILL_DELETED_KV" ]; then
+                echo "  ⏳ Still purging Key Vault: $STILL_DELETED_KV"
+              fi
             fi
-          fi
+          done
 
-          echo "⏱️ Waiting 60 seconds for purge operations to complete..."
-          sleep 60
+          # STEP 4: RECREATE RESOURCE GROUP
+          echo ""
+          echo "STEP 4: Recreating resource group with new unique hash..."
+          az group create \
+            --name "$RG" \
+            --location "$LOCATION" \
+            --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions
 
+          echo "✅ Resource group recreated - new uniqueString will be generated"
+
+          # STEP 5: RETRY DEPLOYMENT
+          echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🔄 Retrying deployment..."
+          echo "🔄 RETRY: Deploying with fresh resource group"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           az deployment group create \
@@ -400,32 +476,71 @@ jobs:
         id: cleanup-retry-bicep
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "⚠️ Bicep deployment failed - attempting cleanup"
+          echo "⚠️ Bicep deployment failed - FULL CLEANUP"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}"
+          RG="${{ needs.validate-templates.outputs.rg_name }}"
 
-          # Purge soft-deleted resources
-          echo "Purging soft-deleted APIM services..."
+          # STEP 1: DELETE RESOURCE GROUP
+          echo ""
+          echo "STEP 1: Deleting resource group completely..."
+          if az group exists --name "$RG" | grep -q "true"; then
+            az group delete --name "$RG" --yes --no-wait
+
+            for i in {1..120}; do
+              if ! az group exists --name "$RG" | grep -q "true"; then
+                echo "✅ Resource group deleted"
+                break
+              fi
+              if [ $((i % 10)) -eq 0 ]; then
+                echo "Deleting... ($((i * 5 / 60)) minutes)"
+              fi
+              sleep 5
+            done
+          fi
+
+          # STEP 2: PURGE SOFT-DELETED RESOURCES
+          echo ""
+          echo "STEP 2: Purging soft-deleted resources..."
+
           DELETED_APIM=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].{name:serviceName, location:location}" -o json 2>/dev/null || echo "[]")
           if [ "$DELETED_APIM" != "[]" ]; then
             echo "$DELETED_APIM" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
-              az apim deletedservice purge --service-name "$NAME" --location "$LOC" 2>/dev/null || echo "Failed to purge $NAME"
+              echo "Purging APIM: $NAME"
+              az apim deletedservice purge --service-name "$NAME" --location "$LOC" 2>&1
             done
           fi
 
-          echo "Purging soft-deleted Key Vaults..."
           DELETED_KV=$(az keyvault list-deleted --query "[?starts_with(name, 'az-rapidgo')].{name:name, location:properties.location}" -o json 2>/dev/null || echo "[]")
           if [ "$DELETED_KV" != "[]" ]; then
             echo "$DELETED_KV" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
-              az keyvault purge --name "$NAME" --location "$LOC" 2>/dev/null || echo "Failed to purge $NAME"
+              echo "Purging Key Vault: $NAME"
+              az keyvault purge --name "$NAME" --location "$LOC" 2>&1
             done
           fi
 
-          echo "⏱️ Waiting 60 seconds for purge operations to complete..."
-          sleep 60
+          # STEP 3: WAIT FOR PURGE
+          echo ""
+          echo "STEP 3: Waiting 5 minutes for purge completion..."
+          for i in {1..30}; do
+            sleep 10
+            if [ $((i % 6)) -eq 0 ]; then
+              echo "  $((i / 6)) minute(s) elapsed..."
+            fi
+          done
 
-          echo "🔄 Retrying Bicep deployment..."
+          # STEP 4: RECREATE RESOURCE GROUP
+          echo ""
+          echo "STEP 4: Recreating resource group..."
+          az group create --name "$RG" --location "$LOCATION" --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions
+
+          # STEP 5: RETRY
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔄 RETRY: Bicep deployment"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
           az deployment sub create \
             --name bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }}-retry \
             --location "$LOCATION" \
