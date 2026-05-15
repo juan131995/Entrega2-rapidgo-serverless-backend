@@ -3,7 +3,6 @@
 
 RapidGo requiere almacenar todo el contenido multimedia en su aplicación movil al momento de que los usuarios realicen sus pedidos, incluyendo contenido multimedia tanto de las tiendas como de los repartidores e imagenes y videos de los productos comestibles.
 
-
 Adicionalmente:
 
 - Los archivos multimedia (fotos y videos) deben visualizarse desde un dispositivo movil con conexión a internet.
@@ -46,8 +45,22 @@ Adicionalmente:
 ### 3. Amazon EFS
 
 #### Ventajas
+- Permite un sistema de archivos completamente administrado y escalable en la nube, donde AWS gestiona la infraestructura de almacenamiento, hardware, actualizaciones y mantenimiento del sistema de archivos.
+
+- Utiliza el protocolo NFS (Network File System), permitiendo que múltiples instancias o servidores accedan simultáneamente al mismo sistema de archivos compartido dentro de la infraestructura de Amazon Web Services.
+- 
+- El almacenamiento escala automáticamente a medida que se agregan o eliminan archivos, proporcionando capacidad de almacenamiento dinámica sin necesidad de aprovisionar manualmente recursos.
+  
+-  Ofrece alta disponibilidad y durabilidad, ya que los sistemas de archivos regionales almacenan datos redundantes en múltiples Availability Zones dentro de una región, permitiendo continuidad del servicio incluso si una zona falla.
 
 #### Desventajas
+-  Está diseñado principalmente para aplicaciones que requieren acceso desde servidores o instancias de cómputo, como Amazon EC2, contenedores o servicios serverless, donde el sistema de archivos se monta mediante el protocolo NFS dentro de una red privada (VPC).
+  
+-  No está optimizado para la distribución directa de contenido multimedia mediante HTTP/HTTPS, ya que Amazon Elastic File System funciona como un sistema de archivos de red que se monta en servidores utilizando el protocolo NFS v4, en lugar de servir archivos directamente a clientes web o aplicaciones móviles.
+  
+-  Puede generar mayor latencia cuando se utiliza como backend para servir archivos directamente a usuarios finales, debido a que el acceso a los datos está diseñado para realizarse desde instancias de cómputo dentro de la infraestructura de AWS, las cuales luego procesan o distribuyen los archivos hacia los clientes.
+  
+-  Su integración es más natural dentro del ecosistema de Amazon Web Services, ya que está pensado para trabajar directamente con servicios como Amazon EC2, Amazon Elastic Kubernetes Service, AWS Lambda o Amazon Elastic Container Service, lo que hace que su adopción sea más natural en arquitecturas basadas en AWS que en entornos centrados en Azure.
 
 ---
 
