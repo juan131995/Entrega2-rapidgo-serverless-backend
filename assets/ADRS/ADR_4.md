@@ -48,7 +48,7 @@ Adicionalmente:
 - Permite un sistema de archivos completamente administrado y escalable en la nube, donde AWS gestiona la infraestructura de almacenamiento, hardware, actualizaciones y mantenimiento del sistema de archivos.
 
 - Utiliza el protocolo NFS (Network File System), permitiendo que múltiples instancias o servidores accedan simultáneamente al mismo sistema de archivos compartido dentro de la infraestructura de Amazon Web Services.
-- 
+
 - El almacenamiento escala automáticamente a medida que se agregan o eliminan archivos, proporcionando capacidad de almacenamiento dinámica sin necesidad de aprovisionar manualmente recursos.
   
 -  Ofrece alta disponibilidad y durabilidad, ya que los sistemas de archivos regionales almacenan datos redundantes en múltiples Availability Zones dentro de una región, permitiendo continuidad del servicio incluso si una zona falla.
