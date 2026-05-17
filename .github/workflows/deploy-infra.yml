@@ -126,6 +126,7 @@ jobs:
               done
             else
               echo "Resource Group exists in correct location: $EXISTING_LOCATION"
+              echo "⚠️ WARNING: If deployment fails with 'location cannot be changed', delete the RG manually"
             fi
           fi
 
@@ -312,15 +313,42 @@ jobs:
             echo "Resource group is new, no existing resources"
           fi
 
+      - name: Clean up failed deployments
+        if: needs.validate-templates.outputs.deploy_type == 'arm'
+        run: |
+          RG="${{ needs.validate-templates.outputs.rg_name }}"
+          echo "Cleaning up failed deployments for resource group: $RG"
+          
+          # Get failed deployments and delete them
+          FAILED_DEPLOYS=$(az deployment group list --resource-group "$RG" --query "[?properties.provisioningState=='Failed'].name" -o tsv 2>/dev/null || true)
+          
+          if [ -n "$FAILED_DEPLOYS" ]; then
+            echo "Found failed deployments:"
+            echo "$FAILED_DEPLOYS"
+            
+            for DEPLOY in $FAILED_DEPLOYS; do
+              echo "Deleting failed deployment: $DEPLOY"
+              az deployment group delete --resource-group "$RG" --name "$DEPLOY" 2>/dev/null || true
+            done
+            
+            echo "✅ Failed deployments cleaned up"
+          else
+            echo "✅ No failed deployments to clean up"
+          fi
+
       - name: Deploy ARM Template (First Attempt)
         if: needs.validate-templates.outputs.deploy_type == 'arm'
         id: deploy
         timeout-minutes: 45
         continue-on-error: true
         run: |
+          # Use unique deployment name per run to avoid "Property at path location cannot be changed"
+          DEPLOYMENT_NAME="arm-rapidgo-${{ needs.validate-templates.outputs.env_name }}-$(date +%Y%m%d%H%M%S)"
+          echo "deployment_name=$DEPLOYMENT_NAME" >> $GITHUB_OUTPUT
+          
           az deployment group create \
             --resource-group ${{ needs.validate-templates.outputs.rg_name }} \
-            --name arm-rapidgo-${{ needs.validate-templates.outputs.env_name }} \
+            --name "$DEPLOYMENT_NAME" \
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
@@ -491,9 +519,11 @@ jobs:
           echo "🔄 RETRY: Deploying with fresh resource group"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+          RETRY_DEPLOYMENT_NAME="arm-rapidgo-${{ needs.validate-templates.outputs.env_name }}-retry-$(date +%Y%m%d%H%M%S)"
+          
           az deployment group create \
             --resource-group "$RG" \
-            --name arm-rapidgo-${{ needs.validate-templates.outputs.env_name }}-retry \
+            --name "$RETRY_DEPLOYMENT_NAME" \
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
@@ -519,8 +549,11 @@ jobs:
         timeout-minutes: 45
         continue-on-error: true
         run: |
+          DEPLOYMENT_NAME="bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }}-$(date +%Y%m%d%H%M%S)"
+          echo "deployment_name=$DEPLOYMENT_NAME" >> $GITHUB_OUTPUT
+          
           az deployment sub create \
-            --name bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }} \
+            --name "$DEPLOYMENT_NAME" \
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --template-file $BICEP_TEMPLATE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
@@ -615,8 +648,10 @@ jobs:
           echo "🔄 RETRY: Bicep deployment"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+          RETRY_DEPLOYMENT_NAME="bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }}-retry-$(date +%Y%m%d%H%M%S)"
+          
           az deployment sub create \
-            --name bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }}-retry \
+            --name "$RETRY_DEPLOYMENT_NAME" \
             --location "$LOCATION" \
             --template-file $BICEP_TEMPLATE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
