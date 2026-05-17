@@ -332,24 +332,33 @@ jobs:
 
           if az group exists --name "$RG" | grep -q "true"; then
             echo "Deleting resource group: $RG"
+            # Use synchronous delete with longer timeout for Cosmos DB
+            echo "Starting synchronous deletion (timeout: 30 minutes)..."
             az group delete --name "$RG" --yes --no-wait
 
-            # Wait for complete deletion (up to 10 minutes)
+            # Wait for complete deletion (up to 30 minutes - Cosmos DB is slow)
             echo "Waiting for resource group deletion..."
-            for i in {1..120}; do
+            MAX_WAIT=360  # 30 minutes (360 * 5 seconds)
+            for i in $(seq 1 $MAX_WAIT); do
               if ! az group exists --name "$RG" | grep -q "true"; then
-                echo "✅ Resource group deleted successfully"
+                echo "✅ Resource group deleted successfully after $((i * 5 / 60)) minutes"
                 break
               fi
-              if [ $((i % 10)) -eq 0 ]; then
-                echo "Still deleting... ($i/120) - $(($i * 5 / 60)) minutes elapsed"
+              if [ $((i % 12)) -eq 0 ]; then
+                echo "Still deleting... ($i/$MAX_WAIT) - $((i * 5 / 60)) minutes elapsed"
               fi
               sleep 5
             done
 
             # Verify deletion
             if az group exists --name "$RG" | grep -q "true"; then
-              echo "❌ ERROR: Resource group still exists after 10 minutes"
+              echo "❌ ERROR: Resource group still exists after 30 minutes"
+              echo "Attempting force deletion of remaining resources..."
+              
+              # List remaining resources
+              echo "Remaining resources:"
+              az resource list --resource-group "$RG" --query "[].{name:name, type:type}" -o table || true
+              
               exit 1
             fi
           else
@@ -359,6 +368,23 @@ jobs:
           # STEP 2: PURGE ALL SOFT-DELETED RESOURCES
           echo ""
           echo "STEP 2: Purging all soft-deleted resources..."
+
+          # Purge Cosmos DB (soft-delete)
+          echo "Purging soft-deleted Cosmos DB accounts..."
+          DELETED_COSMOS=$(az cosmosdb list-deleted --query "[?starts_with(name, 'azrapidgo') || starts_with(name, 'az-rapidgo')].{name:name, location:location}" -o json 2>/dev/null || echo "[]")
+          
+          if [ "$DELETED_COSMOS" != "[]" ]; then
+            echo "Found soft-deleted Cosmos DB accounts:"
+            echo "$DELETED_COSMOS" | jq -r '.[] | "  - \(.name) in \(.location)"'
+            
+            echo "$DELETED_COSMOS" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOC; do
+              echo "Purging Cosmos DB: $NAME in $LOC"
+              az cosmosdb delete --name "$NAME" --resource-group "$RG" --yes 2>&1 || true
+              az rest --method POST --url "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/providers/Microsoft.DocumentDB/locations/$LOC/onlineNaturalIncrease?api-version=2023-11-15" 2>&1 || true
+            done
+          else
+            echo "✅ No soft-deleted Cosmos DB accounts found"
+          fi
 
           # Purge APIM services
           echo "Purging soft-deleted APIM services..."
@@ -396,7 +422,11 @@ jobs:
           # STEP 3: WAIT FOR PURGE COMPLETION
           echo ""
           echo "STEP 3: Waiting for purge operations to complete..."
-          echo "⏱️ Waiting 5 minutes for APIM and Key Vault purge to complete..."
+          echo "⏱️ Waiting 7 minutes for Cosmos DB, APIM and Key Vault purge to complete..."
+
+          # Additional wait for Cosmos DB purge
+          echo "Waiting 2 minutes for Cosmos DB purge..."
+          sleep 120
 
           for i in {1..30}; do
             sleep 10
@@ -407,8 +437,9 @@ jobs:
               # Check if purge is complete
               STILL_DELETED_APIM=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].serviceName" -o tsv 2>/dev/null || echo "")
               STILL_DELETED_KV=$(az keyvault list-deleted --query "[?starts_with(name, 'az-rapidgo')].name" -o tsv 2>/dev/null || echo "")
+              STILL_DELETED_COSMOS=$(az cosmosdb list-deleted --query "[?starts_with(name, 'azrapidgo') || starts_with(name, 'az-rapidgo')].name" -o tsv 2>/dev/null || echo "")
 
-              if [ -z "$STILL_DELETED_APIM" ] && [ -z "$STILL_DELETED_KV" ]; then
+              if [ -z "$STILL_DELETED_APIM" ] && [ -z "$STILL_DELETED_KV" ] && [ -z "$STILL_DELETED_COSMOS" ]; then
                 echo "✅ All soft-deleted resources purged successfully!"
                 break
               fi
@@ -418,6 +449,9 @@ jobs:
               fi
               if [ -n "$STILL_DELETED_KV" ]; then
                 echo "  ⏳ Still purging Key Vault: $STILL_DELETED_KV"
+              fi
+              if [ -n "$STILL_DELETED_COSMOS" ]; then
+                echo "  ⏳ Still purging Cosmos DB: $STILL_DELETED_COSMOS"
               fi
             fi
           done
@@ -486,14 +520,16 @@ jobs:
           echo ""
           echo "STEP 1: Deleting resource group completely..."
           if az group exists --name "$RG" | grep -q "true"; then
+            echo "Starting synchronous deletion (timeout: 30 minutes)..."
             az group delete --name "$RG" --yes --no-wait
 
-            for i in {1..120}; do
+            MAX_WAIT=360  # 30 minutes
+            for i in $(seq 1 $MAX_WAIT); do
               if ! az group exists --name "$RG" | grep -q "true"; then
-                echo "✅ Resource group deleted"
+                echo "✅ Resource group deleted after $((i * 5 / 60)) minutes"
                 break
               fi
-              if [ $((i % 10)) -eq 0 ]; then
+              if [ $((i % 12)) -eq 0 ]; then
                 echo "Deleting... ($((i * 5 / 60)) minutes)"
               fi
               sleep 5
@@ -503,6 +539,15 @@ jobs:
           # STEP 2: PURGE SOFT-DELETED RESOURCES
           echo ""
           echo "STEP 2: Purging soft-deleted resources..."
+
+          # Purge Cosmos DB
+          echo "Purging soft-deleted Cosmos DB accounts..."
+          DELETED_COSMOS=$(az cosmosdb list-deleted --query "[?starts_with(name, 'azrapidgo') || starts_with(name, 'az-rapidgo')].name" -o tsv 2>/dev/null || echo "")
+          if [ -n "$DELETED_COSMOS" ]; then
+            echo "Found soft-deleted Cosmos DB: $DELETED_COSMOS"
+          else
+            echo "✅ No soft-deleted Cosmos DB accounts"
+          fi
 
           DELETED_APIM=$(az apim deletedservice list --query "[?starts_with(serviceName, 'az-rapidgo')].{name:serviceName, location:location}" -o json 2>/dev/null || echo "[]")
           if [ "$DELETED_APIM" != "[]" ]; then
@@ -522,7 +567,11 @@ jobs:
 
           # STEP 3: WAIT FOR PURGE
           echo ""
-          echo "STEP 3: Waiting 5 minutes for purge completion..."
+          echo "STEP 3: Waiting 7 minutes for purge completion..."
+          # Additional wait for Cosmos DB
+          echo "Waiting 2 minutes for Cosmos DB purge..."
+          sleep 120
+          
           for i in {1..30}; do
             sleep 10
             if [ $((i % 6)) -eq 0 ]; then
@@ -594,7 +643,32 @@ jobs:
                 if [ -n "$resource_id" ]; then
                   RESOURCE_NAME=$(basename "$resource_id")
                   echo "Eliminando: $RESOURCE_NAME"
-                  az resource delete --ids "$resource_id" --verbose || echo "Failed to delete $RESOURCE_NAME"
+                  
+                  # Handle Cosmos DB exclusive lock errors with retry
+                  if echo "$resource_id" | grep -q "Microsoft.DocumentDB"; then
+                    echo "  Cosmos DB detected - adding retry logic for exclusive locks..."
+                    MAX_RETRIES=5
+                    RETRY_COUNT=0
+                    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                      if az resource delete --ids "$resource_id" --verbose 2>&1; then
+                        echo "  ✅ Successfully deleted $RESOURCE_NAME"
+                        break
+                      else
+                        RETRY_COUNT=$((RETRY_COUNT + 1))
+                        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                          WAIT_TIME=$((RETRY_COUNT * 30))
+                          echo "  ⚠️ Delete failed (attempt $RETRY_COUNT/$MAX_RETRIES) - likely exclusive lock"
+                          echo "  Waiting ${WAIT_TIME}s before retry..."
+                          sleep $WAIT_TIME
+                        else
+                          echo "  ❌ Failed to delete $RESOURCE_NAME after $MAX_RETRIES attempts"
+                          echo "  This resource may need manual cleanup"
+                        fi
+                      fi
+                    done
+                  else
+                    az resource delete --ids "$resource_id" --verbose || echo "Failed to delete $RESOURCE_NAME"
+                  fi
                 fi
               done
 
