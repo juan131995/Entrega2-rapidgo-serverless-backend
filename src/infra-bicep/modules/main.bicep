@@ -39,7 +39,10 @@ param rateLimitCalls int = 500
 @description('Renewal period in seconds for rate limiting')
 param rateLimitRenewalPeriod int = 60
 
-var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
+@description('Random 6-character suffix for resource names')
+param randomSuffix string = substring(uniqueString(resourceGroup().id), 0, 6)
+
+var uniqueSuffix = toLower(randomSuffix)
 var envName = toLower(environmentName)
 
 var storageAccountName = toLower('azrapidgo${envName}func${uniqueSuffix}')

@@ -72,6 +72,7 @@ jobs:
       rg_name: ${{ steps.env.outputs.rg_name }}
       env_name: ${{ steps.env.outputs.env_name }}
       deploy_type: ${{ steps.env.outputs.deploy_type }}
+      random_suffix: ${{ steps.random-suffix.outputs.suffix }}
     steps:
       - uses: actions/checkout@v4
 
@@ -213,12 +214,20 @@ jobs:
           echo "✅ Pre-deployment purge complete"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+      - name: Generate random suffix for resource names
+        id: random-suffix
+        run: |
+          # Generate a random 6-character alphanumeric suffix
+          SUFFIX=$(openssl rand -hex 3 | tr '0-9' 'a-j' | cut -c1-6)
+          echo "suffix=$SUFFIX" >> $GITHUB_OUTPUT
+          echo "Generated random suffix: $SUFFIX"
+
       - name: Create Resource Group
         run: |
           az group create \
             --name ${{ steps.env.outputs.rg_name }} \
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
-            --tags environment=${{ steps.env.outputs.env_name }} managedBy=github-actions
+            --tags environment=${{ steps.env.outputs.env_name }} managedBy=github-actions randomSuffix=${{ steps.random-suffix.outputs.suffix }}
 
       - name: Validate ARM Template
         if: steps.env.outputs.deploy_type == 'arm'
@@ -228,7 +237,8 @@ jobs:
             --name "validate-rapidgo-${{ steps.env.outputs.env_name }}-$(date +%Y%m%d%H%M%S)" \
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
-            --parameters environmentName=${{ steps.env.outputs.env_name }}
+            --parameters environmentName=${{ steps.env.outputs.env_name }} \
+            --parameters randomSuffix=${{ steps.random-suffix.outputs.suffix }}
 
       - name: Validate Bicep Template
         if: steps.env.outputs.deploy_type == 'bicep'
@@ -237,7 +247,8 @@ jobs:
             --name "validate-rapidgo-${{ steps.env.outputs.env_name }}-$(date +%Y%m%d%H%M%S)" \
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --template-file $BICEP_TEMPLATE \
-            --parameters environmentName=${{ steps.env.outputs.env_name }}
+            --parameters environmentName=${{ steps.env.outputs.env_name }} \
+            --parameters randomSuffix=${{ steps.random-suffix.outputs.suffix }}
 
       - name: What-If Analysis (ARM)
         if: steps.env.outputs.deploy_type == 'arm' && github.event_name == 'pull_request'
@@ -248,6 +259,7 @@ jobs:
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
             --parameters environmentName=${{ steps.env.outputs.env_name }} \
+            --parameters randomSuffix=${{ steps.random-suffix.outputs.suffix }} \
             --result-format FullResourcePayloads
 
       - name: What-If Analysis (Bicep)
@@ -258,6 +270,7 @@ jobs:
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --template-file $BICEP_TEMPLATE \
             --parameters environmentName=${{ steps.env.outputs.env_name }} \
+            --parameters randomSuffix=${{ steps.random-suffix.outputs.suffix }} \
             --result-format FullResourcePayloads
 
   deploy:
@@ -311,6 +324,7 @@ jobs:
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
+            --parameters randomSuffix=${{ needs.validate-templates.outputs.random_suffix }} \
             --mode Incremental \
             --query properties.outputs
 
@@ -456,13 +470,18 @@ jobs:
             fi
           done
 
-          # STEP 4: RECREATE RESOURCE GROUP
+          # STEP 4: RECREATE RESOURCE GROUP WITH NEW RANDOM SUFFIX
           echo ""
-          echo "STEP 4: Recreating resource group with new unique hash..."
+          echo "STEP 4: Recreating resource group with new random suffix..."
+          
+          # Generate new random suffix for recreation
+          NEW_SUFFIX=$(openssl rand -hex 3 | tr '0-9' 'a-j' | cut -c1-6)
+          echo "New random suffix: $NEW_SUFFIX"
+          
           az group create \
             --name "$RG" \
             --location "$LOCATION" \
-            --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions
+            --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions randomSuffix=$NEW_SUFFIX
 
           echo "✅ Resource group recreated - new uniqueString will be generated"
 
@@ -478,6 +497,7 @@ jobs:
             --template-file $ARM_TEMPLATE \
             --parameters @$PARAMS_FILE \
             --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
+            --parameters randomSuffix=$NEW_SUFFIX \
             --mode Incremental \
             --query properties.outputs
 
@@ -503,7 +523,8 @@ jobs:
             --name bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }} \
             --location ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }} \
             --template-file $BICEP_TEMPLATE \
-            --parameters environmentName=${{ needs.validate-templates.outputs.env_name }}
+            --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
+            --parameters randomSuffix=${{ needs.validate-templates.outputs.random_suffix }}
 
       - name: Cleanup and Retry Bicep on Soft-Delete Error
         if: needs.validate-templates.outputs.deploy_type == 'bicep' && steps.deploy-bicep.outcome == 'failure'
@@ -579,10 +600,14 @@ jobs:
             fi
           done
 
-          # STEP 4: RECREATE RESOURCE GROUP
+          # STEP 4: RECREATE RESOURCE GROUP WITH NEW RANDOM SUFFIX
           echo ""
-          echo "STEP 4: Recreating resource group..."
-          az group create --name "$RG" --location "$LOCATION" --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions
+          echo "STEP 4: Recreating resource group with new random suffix..."
+          
+          NEW_SUFFIX=$(openssl rand -hex 3 | tr '0-9' 'a-j' | cut -c1-6)
+          echo "New random suffix: $NEW_SUFFIX"
+          
+          az group create --name "$RG" --location "$LOCATION" --tags environment=${{ needs.validate-templates.outputs.env_name }} managedBy=github-actions randomSuffix=$NEW_SUFFIX
 
           # STEP 5: RETRY
           echo ""
@@ -594,7 +619,8 @@ jobs:
             --name bicep-rapidgo-${{ needs.validate-templates.outputs.env_name }}-retry \
             --location "$LOCATION" \
             --template-file $BICEP_TEMPLATE \
-            --parameters environmentName=${{ needs.validate-templates.outputs.env_name }}
+            --parameters environmentName=${{ needs.validate-templates.outputs.env_name }} \
+            --parameters randomSuffix=$NEW_SUFFIX
 
       - name: Check Bicep Deployment Status
         if: needs.validate-templates.outputs.deploy_type == 'bicep'

@@ -10,6 +10,7 @@ param jwtAudience string = 'https://api.rapidgo.app'
 param jwtIssuer string = 'https://rapidgo.auth0.com/'
 param rateLimitCalls int = 500
 param rateLimitRenewalPeriod int = 60
+param randomSuffix string = substring(uniqueString(subscription().id, environmentName), 0, 6)
 
 var rgName = 'az-rapidgo-${environmentName}-rg'
 var deploymentName = 'arm-rapidgo-${environmentName}'
@@ -21,6 +22,7 @@ resource resourceGroup 'Microsoft.Resources/resourceGroups@2023-07-01' = {
     environment: environmentName
     managedBy: 'bicep'
     project: 'RapidGo'
+    randomSuffix: randomSuffix
   }
 }
 
@@ -38,6 +40,7 @@ module infrastructure './modules/main.bicep' = {
     jwtIssuer: jwtIssuer
     rateLimitCalls: rateLimitCalls
     rateLimitRenewalPeriod: rateLimitRenewalPeriod
+    randomSuffix: randomSuffix
   }
 }
 

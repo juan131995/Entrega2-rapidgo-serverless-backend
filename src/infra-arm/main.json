@@ -9,6 +9,14 @@
         "description": "Prefix name used for all deployed resources"
       }
     },
+    "randomSuffix": {
+      "type": "string",
+      "defaultValue": "[substring(uniqueString(resourceGroup().id, deployment().name), 0, 6)]",
+      "maxLength": 6,
+      "metadata": {
+        "description": "Random 6-character suffix for resource names"
+      }
+    },
     "functionAppRuntime": {
       "type": "string",
       "defaultValue": "node",
@@ -60,7 +68,7 @@
     }
   },
   "variables": {
-    "uniqueSuffix": "[substring(uniqueString(resourceGroup().id), 0, 6)]",
+    "uniqueSuffix": "[toLower(parameters('randomSuffix'))]",
     "envName": "[toLower(parameters('environmentName'))]",
     "storageAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'func', variables('uniqueSuffix')))]",
     "functionAppName": "[concat('az-rapidgo-', variables('envName'), '-func-', variables('uniqueSuffix'))]",
