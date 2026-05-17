@@ -104,30 +104,46 @@ jobs:
           az bicep install
           az bicep version
 
-      - name: Check and delete existing RG if location mismatch
+      - name: Check and delete existing RG to ensure clean deployment
         run: |
           RG_NAME="${{ steps.env.outputs.rg_name }}"
           TARGET_LOCATION="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.location || 'centralus' }}"
 
           if az group exists --name "$RG_NAME" | grep -q "true"; then
-            EXISTING_LOCATION=$(az group show --name "$RG_NAME" --query location -o tsv)
-            if [ "$EXISTING_LOCATION" != "$TARGET_LOCATION" ]; then
-              echo "Resource Group exists in '$EXISTING_LOCATION' but target is '$TARGET_LOCATION'"
-              echo "Deleting existing Resource Group..."
-              az group delete --name "$RG_NAME" --yes --no-wait
+            echo "Resource Group '$RG_NAME' already exists"
+            echo "Deleting to ensure clean deployment with new random suffix..."
+            
+            # List existing resources for logging
+            echo "Existing resources:"
+            az resource list --resource-group "$RG_NAME" --query "[].{name:name, type:type}" -o table || true
+            
+            # Delete the resource group
+            echo "Deleting resource group..."
+            az group delete --name "$RG_NAME" --yes --no-wait
 
-              for i in {1..30}; do
-                if ! az group exists --name "$RG_NAME" | grep -q "true"; then
-                  echo "Resource Group deleted successfully"
-                  break
-                fi
-                echo "Waiting... ($i/30)"
-                sleep 10
-              done
-            else
-              echo "Resource Group exists in correct location: $EXISTING_LOCATION"
-              echo "⚠️ WARNING: If deployment fails with 'location cannot be changed', delete the RG manually"
+            # Wait for complete deletion (up to 30 minutes)
+            echo "Waiting for resource group deletion..."
+            MAX_WAIT=360
+            for i in $(seq 1 $MAX_WAIT); do
+              if ! az group exists --name "$RG_NAME" | grep -q "true"; then
+                echo "✅ Resource Group deleted successfully after $((i * 5 / 60)) minutes"
+                break
+              fi
+              if [ $((i % 12)) -eq 0 ]; then
+                echo "Still deleting... ($i/$MAX_WAIT) - $((i * 5 / 60)) minutes elapsed"
+              fi
+              sleep 5
+            done
+
+            # Verify deletion
+            if az group exists --name "$RG_NAME" | grep -q "true"; then
+              echo "❌ ERROR: Resource group still exists after 30 minutes"
+              echo "Remaining resources:"
+              az resource list --resource-group "$RG_NAME" --query "[].{name:name, type:type}" -o table || true
+              exit 1
             fi
+          else
+            echo "Resource Group '$RG_NAME' does not exist - will be created fresh"
           fi
 
       - name: Register required resource providers
@@ -294,24 +310,6 @@ jobs:
       - name: Install Bicep CLI
         if: needs.validate-templates.outputs.deploy_type == 'bicep'
         run: az bicep install
-
-      - name: Capture pre-deployment state
-        id: pre-deploy
-        run: |
-          RG="${{ needs.validate-templates.outputs.rg_name }}"
-
-          # Guardar lista de recursos existentes antes del deployment
-          if az group exists --name "$RG" | grep -q "true"; then
-            EXISTING_RESOURCES=$(az resource list --resource-group "$RG" --query "[].id" -o tsv | sort)
-            echo "$EXISTING_RESOURCES" > /tmp/pre-deploy-resources.txt
-            echo "has_existing_resources=true" >> $GITHUB_OUTPUT
-            echo "Pre-deployment resources captured:"
-            cat /tmp/pre-deploy-resources.txt
-          else
-            touch /tmp/pre-deploy-resources.txt
-            echo "has_existing_resources=false" >> $GITHUB_OUTPUT
-            echo "Resource group is new, no existing resources"
-          fi
 
       - name: Clean up failed deployments
         if: needs.validate-templates.outputs.deploy_type == 'arm'
@@ -678,74 +676,35 @@ jobs:
           echo "## 🔴 Deployment Failed - Iniciando Rollback Automático" | tee -a $GITHUB_STEP_SUMMARY
           echo "" | tee -a $GITHUB_STEP_SUMMARY
 
-          # Obtener recursos actuales
-          CURRENT_RESOURCES=$(az resource list --resource-group "$RG" --query "[].id" -o tsv 2>/dev/null | sort || echo "")
+          # List resources created in this deployment
+          if az group exists --name "$RG" | grep -q "true"; then
+            echo "### Resources to be deleted:" | tee -a $GITHUB_STEP_SUMMARY
+            echo '```' | tee -a $GITHUB_STEP_SUMMARY
+            az resource list --resource-group "$RG" --query "[].name" -o tsv 2>/dev/null | while read -r name; do
+              echo "- $name" | tee -a $GITHUB_STEP_SUMMARY
+            done
+            echo '```' | tee -a $GITHUB_STEP_SUMMARY
+            echo "" | tee -a $GITHUB_STEP_SUMMARY
 
-          # Comparar con recursos pre-deployment
-          if [ -f /tmp/pre-deploy-resources.txt ]; then
-            PRE_DEPLOY_RESOURCES=$(cat /tmp/pre-deploy-resources.txt)
+            # Delete entire resource group instead of individual resources
+            echo "Deleting entire resource group for clean rollback..."
+            az group delete --name "$RG" --yes --no-wait
 
-            # Encontrar recursos nuevos (creados en este deployment)
-            NEW_RESOURCES=$(comm -13 <(echo "$PRE_DEPLOY_RESOURCES") <(echo "$CURRENT_RESOURCES"))
-
-            if [ -n "$NEW_RESOURCES" ]; then
-              echo "### Recursos creados en este deployment (serán eliminados):" | tee -a $GITHUB_STEP_SUMMARY
-              echo '```' | tee -a $GITHUB_STEP_SUMMARY
-              echo "$NEW_RESOURCES" | while read -r resource_id; do
-                RESOURCE_NAME=$(basename "$resource_id")
-                echo "- $RESOURCE_NAME" | tee -a $GITHUB_STEP_SUMMARY
-              done
-              echo '```' | tee -a $GITHUB_STEP_SUMMARY
-              echo "" | tee -a $GITHUB_STEP_SUMMARY
-
-              # Eliminar recursos nuevos uno por uno (en orden inverso de dependencias)
-              echo "Eliminando recursos nuevos..."
-              echo "$NEW_RESOURCES" | tac | while read -r resource_id; do
-                if [ -n "$resource_id" ]; then
-                  RESOURCE_NAME=$(basename "$resource_id")
-                  echo "Eliminando: $RESOURCE_NAME"
-                  
-                  # Handle Cosmos DB exclusive lock errors with retry
-                  if echo "$resource_id" | grep -q "Microsoft.DocumentDB"; then
-                    echo "  Cosmos DB detected - adding retry logic for exclusive locks..."
-                    MAX_RETRIES=5
-                    RETRY_COUNT=0
-                    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-                      if az resource delete --ids "$resource_id" --verbose 2>&1; then
-                        echo "  ✅ Successfully deleted $RESOURCE_NAME"
-                        break
-                      else
-                        RETRY_COUNT=$((RETRY_COUNT + 1))
-                        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                          WAIT_TIME=$((RETRY_COUNT * 30))
-                          echo "  ⚠️ Delete failed (attempt $RETRY_COUNT/$MAX_RETRIES) - likely exclusive lock"
-                          echo "  Waiting ${WAIT_TIME}s before retry..."
-                          sleep $WAIT_TIME
-                        else
-                          echo "  ❌ Failed to delete $RESOURCE_NAME after $MAX_RETRIES attempts"
-                          echo "  This resource may need manual cleanup"
-                        fi
-                      fi
-                    done
-                  else
-                    az resource delete --ids "$resource_id" --verbose || echo "Failed to delete $RESOURCE_NAME"
-                  fi
-                fi
-              done
-
-              echo "✓ Rollback completado - recursos nuevos eliminados" | tee -a $GITHUB_STEP_SUMMARY
-            else
-              echo "No se crearon recursos nuevos en este deployment" | tee -a $GITHUB_STEP_SUMMARY
-            fi
+            # Wait for deletion
+            echo "Waiting for resource group deletion..."
+            MAX_WAIT=360
+            for i in $(seq 1 $MAX_WAIT); do
+              if ! az group exists --name "$RG" | grep -q "true"; then
+                echo "✅ Resource group deleted after $((i * 5 / 60)) minutes"
+                break
+              fi
+              if [ $((i % 12)) -eq 0 ]; then
+                echo "Still deleting... $((i * 5 / 60)) minutes elapsed"
+              fi
+              sleep 5
+            done
           else
-            # Si no hay archivo pre-deploy, eliminar todo el resource group si es nuevo
-            if [ "${{ steps.pre-deploy.outputs.has_existing_resources }}" == "false" ]; then
-              echo "Resource group fue creado en este deployment - eliminando completamente" | tee -a $GITHUB_STEP_SUMMARY
-              az group delete --name "$RG" --yes --no-wait
-              echo "✓ Resource group $RG eliminado" | tee -a $GITHUB_STEP_SUMMARY
-            else
-              echo "⚠️ No se puede determinar recursos nuevos - rollback manual requerido" | tee -a $GITHUB_STEP_SUMMARY
-            fi
+            echo "Resource group does not exist, nothing to rollback" | tee -a $GITHUB_STEP_SUMMARY
           fi
 
           echo "" | tee -a $GITHUB_STEP_SUMMARY
