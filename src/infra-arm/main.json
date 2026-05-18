@@ -327,8 +327,6 @@
         "tenantId": "[subscription().tenantId]",
         "enabledForTemplateDeployment": true,
         "enableRbacAuthorization": false,
-        "enableSoftDelete": false,
-        "enablePurgeProtection": false,
         "accessPolicies": []
       }
     },
