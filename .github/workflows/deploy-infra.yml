@@ -43,22 +43,22 @@ jobs:
             LOCATION="centralus"
           fi
 
-          # Generate unique suffix for this deployment
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          SUFFIX=$(echo $TIMESTAMP | tail -c 7)
+          # Generate completely random suffix (6 alphanumeric chars)
+          # This ensures EVERY resource name is unique across ALL deployments
+          RANDOM_SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 6 | head -n 1)
 
-          # Use timestamp in RG name to make it completely unique
-          RG_NAME="rg-rapidgo-${ENV_NAME}-${TIMESTAMP}"
+          # Use simple RG name (resources will be unique via randomSuffix)
+          RG_NAME="rg-rapidgo-${ENV_NAME}-${RANDOM_SUFFIX}"
 
           echo "env_name=$ENV_NAME" >> $GITHUB_OUTPUT
           echo "location=$LOCATION" >> $GITHUB_OUTPUT
           echo "rg_name=$RG_NAME" >> $GITHUB_OUTPUT
-          echo "random_suffix=$SUFFIX" >> $GITHUB_OUTPUT
+          echo "random_suffix=$RANDOM_SUFFIX" >> $GITHUB_OUTPUT
 
           echo "Environment: $ENV_NAME"
           echo "Location: $LOCATION"
           echo "Resource Group: $RG_NAME"
-          echo "Random Suffix: $SUFFIX"
+          echo "Random Suffix: $RANDOM_SUFFIX"
 
       - name: Azure Login
         uses: azure/login@v2
@@ -99,28 +99,6 @@ jobs:
           echo "Deployment Outputs:"
           echo "$OUTPUTS" | jq .
 
-      - name: Cleanup old Resource Groups
-        if: success()
-        run: |
-          echo "🧹 Cleaning up old resource groups..."
-
-          # List all RGs starting with rg-rapidgo-${{ steps.env.outputs.env_name }}
-          OLD_RGS=$(az group list --query "[?starts_with(name, 'rg-rapidgo-${{ steps.env.outputs.env_name }}') && name != '${{ steps.env.outputs.rg_name }}'].name" -o tsv)
-
-          if [ -n "$OLD_RGS" ]; then
-            echo "Found old resource groups to delete:"
-            echo "$OLD_RGS"
-
-            for RG in $OLD_RGS; do
-              echo "Deleting old resource group: $RG"
-              az group delete --name "$RG" --yes --no-wait
-            done
-
-            echo "✅ Cleanup initiated for old resource groups"
-          else
-            echo "✅ No old resource groups to clean up"
-          fi
-
       - name: Deployment Summary
         if: success()
         run: |
@@ -128,17 +106,20 @@ jobs:
             echo "## ✅ Deployment Successful"
             echo ""
             echo "- **Environment:** ${{ steps.env.outputs.env_name }}"
-            echo "- **Resource Group:** ${{ steps.env.outputs.rg_name }}"
+            echo "- **Resource Group:** \`${{ steps.env.outputs.rg_name }}\`"
             echo "- **Location:** ${{ steps.env.outputs.location }}"
-            echo "- **Random Suffix:** ${{ steps.env.outputs.random_suffix }}"
+            echo "- **Random Suffix:** \`${{ steps.env.outputs.random_suffix }}\`"
+            echo ""
+            echo "### Resource Names"
+            echo "All resources use the suffix \`${{ steps.env.outputs.random_suffix }}\` to ensure uniqueness."
             echo ""
             echo "### Next Steps"
             echo "1. Verify resources in Azure Portal"
             echo "2. Deploy function code"
             echo "3. Test API endpoints"
             echo ""
-            echo "### Important"
-            echo "Old resource groups are being deleted in the background."
+            echo "### Cleanup"
+            echo "To delete old deployments, use: \`./scripts/cleanup-all-resources.sh ${{ steps.env.outputs.env_name }}\`"
           } >> $GITHUB_STEP_SUMMARY
 
       - name: Cleanup on Failure
