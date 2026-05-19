@@ -11,10 +11,10 @@
     },
     "randomSuffix": {
       "type": "string",
-      "defaultValue": "[substring(uniqueString(resourceGroup().id, deployment().name), 0, 6)]",
-      "maxLength": 6,
+      "defaultValue": "[substring(uniqueString(resourceGroup().id, deployment().name), 0, 13)]",
+      "maxLength": 13,
       "metadata": {
-        "description": "Random 6-character suffix for resource names"
+        "description": "Random 13-character suffix for resource names (timestamp + random)"
       }
     },
     "functionAppRuntime": {
@@ -70,20 +70,21 @@
   "variables": {
     "uniqueSuffix": "[toLower(parameters('randomSuffix'))]",
     "envName": "[toLower(parameters('environmentName'))]",
-    "storageAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'func', variables('uniqueSuffix')))]",
-    "functionAppName": "[concat('az-rapidgo-', variables('envName'), '-func-', variables('uniqueSuffix'))]",
-    "functionPlanName": "[concat('az-rapidgo-', variables('envName'), '-plan-', variables('uniqueSuffix'))]",
-    "apimName": "[concat('az-rapidgo-', variables('envName'), '-apim-', variables('uniqueSuffix'))]",
-    "cosmosAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'db', variables('uniqueSuffix')))]",
-    "cosmosDatabaseName": "[concat('az-rapidgo-', variables('envName'), '-db-', variables('uniqueSuffix'))]",
+    "envShort": "[if(equals(toLower(parameters('environmentName')), 'prod'), 'p', 'd')]",
+    "storageAccountName": "[toLower(take(concat('rgf', variables('envShort'), variables('uniqueSuffix')), 24))]",
+    "functionAppName": "[concat('rg-', variables('envName'), '-func-', variables('uniqueSuffix'))]",
+    "functionPlanName": "[concat('rg-', variables('envName'), '-plan-', variables('uniqueSuffix'))]",
+    "apimName": "[concat('rg-', variables('envName'), '-apim-', variables('uniqueSuffix'))]",
+    "cosmosAccountName": "[toLower(take(concat('rgc', variables('envShort'), variables('uniqueSuffix')), 44))]",
+    "cosmosDatabaseName": "[concat('rg-', variables('envName'), '-db-', variables('uniqueSuffix'))]",
     "cosmosContainerName": "[concat('pedidos-', variables('uniqueSuffix'))]",
-    "blobStorageAccountName": "[toLower(concat('azrapidgo', variables('envName'), 'blob', variables('uniqueSuffix')))]",
+    "blobStorageAccountName": "[toLower(take(concat('rgb', variables('envShort'), variables('uniqueSuffix')), 24))]",
     "blobContainerName": "[concat('entregas-', variables('uniqueSuffix'))]",
-    "notificationHubNamespace": "[concat('az-rapidgo-', variables('envName'), '-notif-ns-', variables('uniqueSuffix'))]",
-    "notificationHubName": "[concat('az-rapidgo-', variables('envName'), '-notifications-', variables('uniqueSuffix'))]",
-    "keyVaultName": "[toLower(take(concat('az-rapidgo-', variables('envName'), '-kv-', variables('uniqueSuffix')), 24))]",
-    "logAnalyticsName": "[concat('az-rapidgo-', variables('envName'), '-logs-', variables('uniqueSuffix'))]",
-    "appInsightsName": "[concat('az-rapidgo-', variables('envName'), '-insights-', variables('uniqueSuffix'))]",
+    "notificationHubNamespace": "[concat('rg-', variables('envName'), '-notif-', variables('uniqueSuffix'))]",
+    "notificationHubName": "[concat('rg-', variables('envName'), '-notif-hub-', variables('uniqueSuffix'))]",
+    "keyVaultName": "[toLower(take(concat('rgkv', variables('envShort'), variables('uniqueSuffix')), 24))]",
+    "logAnalyticsName": "[concat('rg-', variables('envName'), '-logs-', variables('uniqueSuffix'))]",
+    "appInsightsName": "[concat('rg-', variables('envName'), '-ai-', variables('uniqueSuffix'))]",
     "apimVersion": "2023-05-01-preview",
     "nhVersion": "2023-01-01-preview",
     "cosmosDBVersion": "2023-11-15",
