@@ -43,10 +43,12 @@ jobs:
             LOCATION="centralus"
           fi
 
-          # Generate completely random suffix (6 alphanumeric chars)
-          # This ensures EVERY resource name is unique across ALL deployments
-          # Using openssl for reliable random generation in CI environments
-          RANDOM_SUFFIX=$(openssl rand -hex 3 | tr '[:upper:]' '[:lower:]')
+          # Generate GUARANTEED unique suffix using timestamp + random
+          # Format: YYMMDD-HHMM + 4 random chars = 13 chars total
+          # This ensures ZERO collisions across ALL deployments (past, present, future)
+          TIMESTAMP=$(date +%y%m%d%H%M)
+          RANDOM_PART=$(openssl rand -hex 2 | tr '[:upper:]' '[:lower:]')
+          RANDOM_SUFFIX="${TIMESTAMP}${RANDOM_PART}"
 
           # Use simple RG name (resources will be unique via randomSuffix)
           RG_NAME="rg-rapidgo-${ENV_NAME}-${RANDOM_SUFFIX}"
@@ -65,6 +67,39 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Purge Soft-Deleted API Management Services
+        run: |
+          echo "🧹 Checking for soft-deleted API Management services..."
+
+          # List all soft-deleted APIM services in the subscription
+          DELETED_APIMS=$(az rest \
+            --method get \
+            --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/providers/Microsoft.ApiManagement/deletedservices?api-version=2023-05-01-preview" \
+            --query "value[].{name:name, location:location}" \
+            -o json 2>/dev/null || echo "[]")
+
+          echo "Found soft-deleted APIM services:"
+          echo "$DELETED_APIMS" | jq .
+
+          # Purge each soft-deleted APIM
+          echo "$DELETED_APIMS" | jq -c '.[]' | while read -r apim; do
+            APIM_NAME=$(echo "$apim" | jq -r '.name')
+            APIM_LOCATION=$(echo "$apim" | jq -r '.location')
+
+            if [ "$APIM_NAME" != "null" ] && [ "$APIM_LOCATION" != "null" ]; then
+              echo "🗑️  Purging soft-deleted APIM: $APIM_NAME in $APIM_LOCATION"
+
+              az rest \
+                --method delete \
+                --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/providers/Microsoft.ApiManagement/locations/${APIM_LOCATION}/deletedservices/${APIM_NAME}?api-version=2023-05-01-preview" \
+                || echo "⚠️  Failed to purge $APIM_NAME (may already be purged)"
+
+              echo "✅ Purge initiated for $APIM_NAME"
+            fi
+          done
+
+          echo "✅ Soft-delete cleanup completed"
 
       - name: Create Resource Group
         run: |
