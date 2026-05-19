@@ -11,10 +11,10 @@
     },
     "randomSuffix": {
       "type": "string",
-      "defaultValue": "[substring(uniqueString(resourceGroup().id, deployment().name), 0, 13)]",
-      "maxLength": 13,
+      "defaultValue": "[substring(uniqueString(resourceGroup().id, deployment().name), 0, 14)]",
+      "maxLength": 14,
       "metadata": {
-        "description": "Random 13-character suffix for resource names (timestamp + random)"
+        "description": "Random 14-character suffix for resource names (YYMMDDHHmm + 4 hex chars)"
       }
     },
     "functionAppRuntime": {
