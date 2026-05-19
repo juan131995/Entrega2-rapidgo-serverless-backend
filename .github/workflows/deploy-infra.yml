@@ -74,9 +74,13 @@ jobs:
 
       - name: Deploy ARM Template
         id: deploy
-        timeout-minutes: 60
+        timeout-minutes: 90
         run: |
           DEPLOYMENT_NAME="rapidgo-${{ steps.env.outputs.env_name }}-$(date +%Y%m%d-%H%M%S)"
+
+          echo "⏳ Starting deployment: $DEPLOYMENT_NAME"
+          echo "⚠️  API Management can take 30-50 minutes to deploy"
+          echo "📊 Progress will be logged every 5 minutes"
 
           az deployment group create \
             --resource-group ${{ steps.env.outputs.rg_name }} \
@@ -86,7 +90,40 @@ jobs:
             --parameters environmentName=${{ steps.env.outputs.env_name }} \
             --parameters randomSuffix=${{ steps.env.outputs.random_suffix }} \
             --mode Incremental \
-            --verbose
+            --no-wait
+
+          # Monitor deployment progress
+          echo "Monitoring deployment progress..."
+          TIMEOUT=5400  # 90 minutes in seconds
+          ELAPSED=0
+          INTERVAL=300  # Check every 5 minutes
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATE=$(az deployment group show \
+              --resource-group ${{ steps.env.outputs.rg_name }} \
+              --name "$DEPLOYMENT_NAME" \
+              --query properties.provisioningState -o tsv 2>/dev/null || echo "NotFound")
+
+            echo "[$((ELAPSED/60))m] Deployment state: $STATE"
+
+            if [ "$STATE" = "Succeeded" ]; then
+              echo "✅ Deployment completed successfully!"
+              exit 0
+            elif [ "$STATE" = "Failed" ] || [ "$STATE" = "Canceled" ]; then
+              echo "❌ Deployment failed with state: $STATE"
+              az deployment group show \
+                --resource-group ${{ steps.env.outputs.rg_name }} \
+                --name "$DEPLOYMENT_NAME" \
+                --query properties.error -o json
+              exit 1
+            fi
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "⏱️ Deployment timed out after 90 minutes"
+          exit 1
 
       - name: Get Deployment Outputs
         if: success()
