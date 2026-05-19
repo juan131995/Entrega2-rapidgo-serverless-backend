@@ -45,7 +45,8 @@ jobs:
 
           # Generate completely random suffix (6 alphanumeric chars)
           # This ensures EVERY resource name is unique across ALL deployments
-          RANDOM_SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 6 | head -n 1)
+          # Using openssl for reliable random generation in CI environments
+          RANDOM_SUFFIX=$(openssl rand -hex 3 | tr '[:upper:]' '[:lower:]')
 
           # Use simple RG name (resources will be unique via randomSuffix)
           RG_NAME="rg-rapidgo-${ENV_NAME}-${RANDOM_SUFFIX}"
