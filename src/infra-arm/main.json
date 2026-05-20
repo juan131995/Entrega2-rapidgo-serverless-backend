@@ -388,7 +388,10 @@
       "location": "[resourceGroup().location]",
       "sku": {
         "name": "Y1",
-        "tier": "Dynamic"
+        "tier": "Dynamic",
+        "size": "Y1",
+        "family": "Y",
+        "capacity": 0
       },
       "kind": "functionapp",
       "tags": {
@@ -396,7 +399,9 @@
         "managedBy": "arm-template"
       },
       "properties": {
-        "reserved": false
+        "reserved": false,
+        "perSiteScaling": false,
+        "maximumElasticWorkerCount": 1
       }
     },
     {
