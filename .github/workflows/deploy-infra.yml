@@ -15,7 +15,7 @@ on:
       location:
         description: 'Azure region'
         required: true
-        default: 'centralus'
+        default: 'eastus'
 
 env:
   ARM_TEMPLATE: src/infra-arm/main.json
@@ -37,10 +37,10 @@ jobs:
             LOCATION="${{ github.event.inputs.location }}"
           elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
             ENV_NAME="prod"
-            LOCATION="centralus"
+            LOCATION="eastus"
           else
             ENV_NAME="dev"
-            LOCATION="centralus"
+            LOCATION="eastus"
           fi
 
           # Generate GUARANTEED unique suffix using timestamp + random
