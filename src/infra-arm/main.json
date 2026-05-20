@@ -396,7 +396,7 @@
         "managedBy": "arm-template"
       },
       "properties": {
-        "reserved": true
+        "reserved": false
       }
     },
     {
@@ -441,7 +441,7 @@
       "apiVersion": "2022-09-01",
       "name": "[variables('functionAppName')]",
       "location": "[resourceGroup().location]",
-      "kind": "functionapp,linux",
+      "kind": "functionapp",
       "identity": {
         "type": "SystemAssigned"
       },
@@ -512,7 +512,7 @@
               "value": "~18"
             }
           ],
-          "linuxFxVersion": "[if(equals(parameters('functionAppRuntime'), 'node'), 'Node|18', 'Python|3.11')]"
+          "nodeVersion": "~18"
         }
       }
     },
