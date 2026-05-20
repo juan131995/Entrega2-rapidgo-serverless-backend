@@ -68,37 +68,99 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Purge Soft-Deleted API Management Services
+      - name: Purge Soft-Deleted Resources
         run: |
-          echo "🧹 Checking for soft-deleted API Management services..."
+          echo "🧹 Cleaning up soft-deleted resources that can cause deployment conflicts..."
+          echo ""
 
-          # List all soft-deleted APIM services in the subscription
+          # ============================================================
+          # 1. PURGE API MANAGEMENT
+          # ============================================================
+          echo "🔍 1. API Management - Checking for soft-deleted services..."
           DELETED_APIMS=$(az rest \
             --method get \
             --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/providers/Microsoft.ApiManagement/deletedservices?api-version=2023-05-01-preview" \
             --query "value[].{name:name, location:location}" \
             -o json 2>/dev/null || echo "[]")
 
-          echo "Found soft-deleted APIM services:"
-          echo "$DELETED_APIMS" | jq .
+          APIM_COUNT=$(echo "$DELETED_APIMS" | jq '. | length')
+          echo "Found $APIM_COUNT soft-deleted APIM service(s)"
 
-          # Purge each soft-deleted APIM
-          echo "$DELETED_APIMS" | jq -c '.[]' | while read -r apim; do
-            APIM_NAME=$(echo "$apim" | jq -r '.name')
-            APIM_LOCATION=$(echo "$apim" | jq -r '.location')
+          if [ "$APIM_COUNT" -gt 0 ]; then
+            echo "$DELETED_APIMS" | jq -c '.[]' | while read -r apim; do
+              APIM_NAME=$(echo "$apim" | jq -r '.name')
+              APIM_LOCATION=$(echo "$apim" | jq -r '.location')
 
-            if [ "$APIM_NAME" != "null" ] && [ "$APIM_LOCATION" != "null" ]; then
-              echo "🗑️  Purging soft-deleted APIM: $APIM_NAME in $APIM_LOCATION"
+              if [ "$APIM_NAME" != "null" ] && [ "$APIM_LOCATION" != "null" ]; then
+                echo "  🗑️  Purging APIM: $APIM_NAME in $APIM_LOCATION"
+                az rest \
+                  --method delete \
+                  --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/providers/Microsoft.ApiManagement/locations/${APIM_LOCATION}/deletedservices/${APIM_NAME}?api-version=2023-05-01-preview" \
+                  || echo "  ⚠️  Failed to purge $APIM_NAME"
+                echo "  ✅ Purged: $APIM_NAME"
+              fi
+            done
+          fi
 
-              az rest \
-                --method delete \
-                --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/providers/Microsoft.ApiManagement/locations/${APIM_LOCATION}/deletedservices/${APIM_NAME}?api-version=2023-05-01-preview" \
-                || echo "⚠️  Failed to purge $APIM_NAME (may already be purged)"
+          echo ""
 
-              echo "✅ Purge initiated for $APIM_NAME"
-            fi
-          done
+          # ============================================================
+          # 2. PURGE KEY VAULTS
+          # ============================================================
+          echo "🔍 2. Key Vault - Checking for soft-deleted vaults..."
+          DELETED_KVS=$(az keyvault list-deleted \
+            --query "[].{name:name, location:properties.location}" \
+            -o json 2>/dev/null || echo "[]")
 
+          KV_COUNT=$(echo "$DELETED_KVS" | jq '. | length')
+          echo "Found $KV_COUNT soft-deleted Key Vault(s)"
+
+          if [ "$KV_COUNT" -gt 0 ]; then
+            echo "$DELETED_KVS" | jq -c '.[]' | while read -r kv; do
+              KV_NAME=$(echo "$kv" | jq -r '.name')
+              KV_LOCATION=$(echo "$kv" | jq -r '.location')
+
+              if [ "$KV_NAME" != "null" ] && [ "$KV_LOCATION" != "null" ]; then
+                echo "  🗑️  Purging Key Vault: $KV_NAME in $KV_LOCATION"
+                az keyvault purge --name "$KV_NAME" --location "$KV_LOCATION" \
+                  || echo "  ⚠️  Failed to purge $KV_NAME"
+                echo "  ✅ Purged: $KV_NAME"
+              fi
+            done
+          fi
+
+          echo ""
+
+          # ============================================================
+          # 3. CLEANUP ORPHANED NOTIFICATION HUBS
+          # ============================================================
+          echo "🔍 3. Notification Hubs - Checking for orphaned namespaces..."
+          DELETED_NH=$(az resource list \
+            --resource-type "Microsoft.NotificationHubs/namespaces" \
+            --query "[?starts_with(name, 'rg-') && (provisioningState=='Deleting' || provisioningState=='Failed')].{name:name, resourceGroup:resourceGroup}" \
+            -o json 2>/dev/null || echo "[]")
+
+          NH_COUNT=$(echo "$DELETED_NH" | jq '. | length')
+          echo "Found $NH_COUNT problematic Notification Hub namespace(s)"
+
+          if [ "$NH_COUNT" -gt 0 ]; then
+            echo "$DELETED_NH" | jq -c '.[]' | while read -r nh; do
+              NH_NAME=$(echo "$nh" | jq -r '.name')
+              NH_RG=$(echo "$nh" | jq -r '.resourceGroup')
+
+              if [ "$NH_NAME" != "null" ] && [ "$NH_RG" != "null" ]; then
+                echo "  🗑️  Deleting Notification Hub: $NH_NAME"
+                az resource delete \
+                  --resource-group "$NH_RG" \
+                  --name "$NH_NAME" \
+                  --resource-type "Microsoft.NotificationHubs/namespaces" \
+                  || echo "  ⚠️  Failed to delete $NH_NAME"
+                echo "  ✅ Deleted: $NH_NAME"
+              fi
+            done
+          fi
+
+          echo ""
           echo "✅ Soft-delete cleanup completed"
 
       - name: Create Resource Group
