@@ -1,0 +1,86 @@
+name: Deploy API Management
+
+on:
+  workflow_call:
+    inputs:
+      rg_name:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
+      env_name:
+        required: true
+        type: string
+      suffix:
+        required: true
+        type: string
+      function_app_hostname:
+        required: true
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+    outputs:
+      apim_name:
+        description: "APIM service name"
+        value: ${{ jobs.deploy.outputs.apim_name }}
+      apim_gateway_url:
+        description: "APIM gateway URL"
+        value: ${{ jobs.deploy.outputs.apim_gateway_url }}
+
+jobs:
+  deploy:
+    name: Deploy APIM
+    runs-on: ubuntu-latest
+    # APIM Developer tier takes 30-50 minutes — timeout set to 75 minutes
+    timeout-minutes: 75
+    outputs:
+      apim_name: ${{ steps.outputs.outputs.apimName }}
+      apim_gateway_url: ${{ steps.outputs.outputs.apimGatewayUrl }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Register APIM provider
+        run: az provider register --namespace Microsoft.ApiManagement --wait
+
+      - name: Deploy APIM ARM template
+        id: deploy
+        run: |
+          echo "⏳ Deploying API Management (Developer SKU — this can take 30-50 minutes)..."
+          az deployment group create \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "apim-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --template-file src/infra-arm/apim/template.json \
+            --parameters \
+              environmentName="${{ inputs.env_name }}" \
+              suffix="${{ inputs.suffix }}" \
+              functionAppHostName="${{ inputs.function_app_hostname }}" \
+              skuAPIM="Developer" \
+            --mode Incremental
+          echo "✅ APIM deployment complete"
+
+      - name: Capture outputs
+        id: outputs
+        run: |
+          RESULT=$(az deployment group show \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "apim-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --query properties.outputs -o json)
+
+          echo "apimName=$(echo "$RESULT" | jq -r '.apimName.value')" >> $GITHUB_OUTPUT
+          echo "apimGatewayUrl=$(echo "$RESULT" | jq -r '.apimGatewayUrl.value')" >> $GITHUB_OUTPUT
+
+          echo "### ✅ API Management" >> $GITHUB_STEP_SUMMARY
+          echo "- Service: $(echo "$RESULT" | jq -r '.apimName.value')" >> $GITHUB_STEP_SUMMARY
+          echo "- Gateway URL: $(echo "$RESULT" | jq -r '.apimGatewayUrl.value')" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

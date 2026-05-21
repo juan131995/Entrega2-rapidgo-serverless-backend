@@ -1,0 +1,90 @@
+name: Deploy Cosmos DB
+
+on:
+  workflow_call:
+    inputs:
+      rg_name:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
+      env_name:
+        required: true
+        type: string
+      suffix:
+        required: true
+        type: string
+      enable_free_tier:
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+    outputs:
+      cosmos_account_name:
+        description: "Cosmos DB account name"
+        value: ${{ jobs.deploy.outputs.cosmos_account_name }}
+      cosmos_db_name:
+        description: "Cosmos DB database name"
+        value: ${{ jobs.deploy.outputs.cosmos_db_name }}
+      cosmos_container_name:
+        description: "Cosmos DB container name"
+        value: ${{ jobs.deploy.outputs.cosmos_container_name }}
+      document_endpoint:
+        description: "Cosmos DB document endpoint"
+        value: ${{ jobs.deploy.outputs.document_endpoint }}
+
+jobs:
+  deploy:
+    name: Deploy Cosmos DB
+    runs-on: ubuntu-latest
+    outputs:
+      cosmos_account_name: ${{ steps.outputs.outputs.cosmosAccountName }}
+      cosmos_db_name: ${{ steps.outputs.outputs.cosmosDatabaseName }}
+      cosmos_container_name: ${{ steps.outputs.outputs.cosmosContainerName }}
+      document_endpoint: ${{ steps.outputs.outputs.documentEndpoint }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Register Cosmos DB provider
+        run: az provider register --namespace Microsoft.DocumentDB --wait
+
+      - name: Deploy Cosmos DB ARM template
+        id: deploy
+        run: |
+          az deployment group create \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "cosmosdb-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --template-file src/infra-arm/cosmosdb/template.json \
+            --parameters environmentName="${{ inputs.env_name }}" suffix="${{ inputs.suffix }}" enableFreeTier="${{ inputs.enable_free_tier }}" \
+            --mode Incremental
+
+      - name: Capture outputs
+        id: outputs
+        run: |
+          RESULT=$(az deployment group show \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "cosmosdb-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --query properties.outputs -o json)
+
+          echo "cosmosAccountName=$(echo "$RESULT" | jq -r '.cosmosAccountName.value')" >> $GITHUB_OUTPUT
+          echo "cosmosDatabaseName=$(echo "$RESULT" | jq -r '.cosmosDatabaseName.value')" >> $GITHUB_OUTPUT
+          echo "cosmosContainerName=$(echo "$RESULT" | jq -r '.cosmosContainerName.value')" >> $GITHUB_OUTPUT
+          echo "documentEndpoint=$(echo "$RESULT" | jq -r '.documentEndpoint.value')" >> $GITHUB_OUTPUT
+
+          echo "### ✅ Cosmos DB" >> $GITHUB_STEP_SUMMARY
+          echo "- Account: $(echo "$RESULT" | jq -r '.cosmosAccountName.value')" >> $GITHUB_STEP_SUMMARY
+          echo "- Database: $(echo "$RESULT" | jq -r '.cosmosDatabaseName.value')" >> $GITHUB_STEP_SUMMARY
+          echo "- Container: $(echo "$RESULT" | jq -r '.cosmosContainerName.value')" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

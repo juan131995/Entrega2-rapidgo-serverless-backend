@@ -1,0 +1,107 @@
+name: Deploy Function App Infrastructure
+
+on:
+  workflow_call:
+    inputs:
+      rg_name:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
+      env_name:
+        required: true
+        type: string
+      suffix:
+        required: true
+        type: string
+      keyvault_name:
+        required: true
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+    outputs:
+      function_app_name:
+        description: "Function App name"
+        value: ${{ jobs.deploy.outputs.function_app_name }}
+      function_app_url:
+        description: "Function App URL"
+        value: ${{ jobs.deploy.outputs.function_app_url }}
+      function_app_hostname:
+        description: "Function App default hostname (without https://)"
+        value: ${{ jobs.deploy.outputs.function_app_hostname }}
+
+jobs:
+  deploy:
+    name: Deploy Function App
+    runs-on: ubuntu-latest
+    outputs:
+      function_app_name: ${{ steps.outputs.outputs.functionAppName }}
+      function_app_url: ${{ steps.outputs.outputs.functionAppUrl }}
+      function_app_hostname: ${{ steps.outputs.outputs.functionAppHostName }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Register providers
+        run: |
+          az provider register --namespace Microsoft.Web --wait
+          az provider register --namespace Microsoft.Insights --wait
+          az provider register --namespace microsoft.operationalinsights --wait
+
+      - name: Deploy Function App ARM template
+        id: deploy
+        run: |
+          az deployment group create \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "functions-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --template-file src/infra-arm/functions/template.json \
+            --parameters environmentName="${{ inputs.env_name }}" suffix="${{ inputs.suffix }}" functionAppRuntime="node" \
+            --mode Incremental
+
+      - name: Capture outputs
+        id: outputs
+        run: |
+          RESULT=$(az deployment group show \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "functions-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --query properties.outputs -o json)
+
+          FA_NAME=$(echo "$RESULT" | jq -r '.functionAppName.value')
+          FA_URL=$(echo "$RESULT" | jq -r '.functionAppUrl.value')
+          FA_HOST=$(echo "$RESULT" | jq -r '.functionAppDefaultHostName.value')
+          PRINCIPAL_ID=$(echo "$RESULT" | jq -r '.principalId.value')
+
+          echo "functionAppName=$FA_NAME" >> $GITHUB_OUTPUT
+          echo "functionAppUrl=$FA_URL" >> $GITHUB_OUTPUT
+          echo "functionAppHostName=$FA_HOST" >> $GITHUB_OUTPUT
+          echo "principalId=$PRINCIPAL_ID" >> $GITHUB_OUTPUT
+
+      - name: Grant Function App managed identity access to Key Vault
+        run: |
+          PRINCIPAL_ID="${{ steps.outputs.outputs.principalId }}"
+          KV_NAME="${{ inputs.keyvault_name }}"
+          echo "🔑 Granting MSI ($PRINCIPAL_ID) access to Key Vault ($KV_NAME)..."
+          az keyvault set-policy \
+            --name "$KV_NAME" \
+            --object-id "$PRINCIPAL_ID" \
+            --secret-permissions get list \
+            --output none
+          echo "✅ Key Vault access policy set"
+
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Function App" >> $GITHUB_STEP_SUMMARY
+          echo "- App: ${{ steps.outputs.outputs.functionAppName }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ steps.outputs.outputs.functionAppUrl }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Key Vault access: granted" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": { "description": "Environment name (dev/prod)" }
+    },
+    "suffix": {
+      "type": "string",
+      "metadata": { "description": "Unique suffix shared across all resources in this deployment" }
+    }
+  },
+  "variables": {
+    "envShort": "[if(equals(toLower(parameters('environmentName')), 'prod'), 'p', 'd')]",
+    "sfx": "[toLower(parameters('suffix'))]",
+    "blobStorageAccountName": "[toLower(take(concat('rgb', variables('envShort'), 'v1', variables('sfx')), 24))]",
+    "blobContainerName": "[concat('entregas-v1-', variables('sfx'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('blobStorageAccountName')]",
+      "location": "[resourceGroup().location]",
+      "sku": { "name": "Standard_LRS" },
+      "kind": "StorageV2",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions",
+        "purpose": "RapidGo blob storage"
+      },
+      "properties": {
+        "accessTier": "Hot",
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "defaultAction": "Allow"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default', variables('blobStorageAccountName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]"
+      ],
+      "properties": {
+        "cors": { "corsRules": [] },
+        "deleteRetentionPolicy": { "enabled": true, "days": 7 },
+        "containerDeleteRetentionPolicy": { "enabled": true, "days": 7 }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default/{1}', variables('blobStorageAccountName'), variables('blobContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('blobStorageAccountName'), 'default')]"
+      ],
+      "properties": { "publicAccess": "None" }
+    }
+  ],
+  "outputs": {
+    "blobStorageAccountName": {
+      "type": "string",
+      "value": "[variables('blobStorageAccountName')]"
+    },
+    "blobContainerName": {
+      "type": "string",
+      "value": "[variables('blobContainerName')]"
+    },
+    "blobEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))).primaryEndpoints.blob]"
+    }
+  }
+}

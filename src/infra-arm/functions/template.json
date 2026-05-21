@@ -1,0 +1,213 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": { "description": "Environment name (dev/prod)" }
+    },
+    "suffix": {
+      "type": "string",
+      "metadata": { "description": "Unique suffix shared across all resources in this deployment" }
+    },
+    "functionAppRuntime": {
+      "type": "string",
+      "defaultValue": "node",
+      "allowedValues": ["node", "python"],
+      "metadata": { "description": "Runtime for the Function App" }
+    }
+  },
+  "variables": {
+    "envShort": "[if(equals(toLower(parameters('environmentName')), 'prod'), 'p', 'd')]",
+    "envName": "[toLower(parameters('environmentName'))]",
+    "sfx": "[toLower(parameters('suffix'))]",
+
+    "funcStorageAccountName": "[toLower(take(concat('rgf', variables('envShort'), 'v1', variables('sfx')), 24))]",
+    "functionPlanName": "[concat('rg-', variables('envName'), '-v1-plan-', variables('sfx'))]",
+    "functionAppName": "[concat('rg-', variables('envName'), '-v1-func-', variables('sfx'))]",
+    "logAnalyticsName": "[concat('rg-', variables('envName'), '-v1-logs-', variables('sfx'))]",
+    "appInsightsName": "[concat('rg-', variables('envName'), '-v1-ai-', variables('sfx'))]",
+
+    "keyVaultName": "[toLower(take(concat('rgkv', variables('envShort'), 'v1', variables('sfx')), 24))]",
+    "cosmosDatabaseName": "[concat('rg-', variables('envName'), '-v1-db-', variables('sfx'))]",
+    "cosmosContainerName": "[concat('pedidos-v1-', variables('sfx'))]",
+    "nhName": "[concat('rg-', variables('envName'), '-v1-hub-', variables('sfx'))]",
+    "blobContainerName": "[concat('entregas-v1-', variables('sfx'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('funcStorageAccountName')]",
+      "location": "[resourceGroup().location]",
+      "sku": { "name": "Standard_LRS" },
+      "kind": "StorageV2",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions",
+        "purpose": "RapidGo function app storage"
+      },
+      "properties": {
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionPlanName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic",
+        "size": "Y1",
+        "family": "Y",
+        "capacity": 0
+      },
+      "kind": "functionapp",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions"
+      },
+      "properties": {
+        "reserved": false,
+        "perSiteScaling": false,
+        "maximumElasticWorkerCount": 1
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('logAnalyticsName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions"
+      },
+      "properties": {
+        "sku": { "name": "PerGB2018" },
+        "retentionInDays": 30,
+        "features": { "enableLogAccessUsingOnlyResourcePermissions": true }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "web",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions"
+      },
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "functionapp",
+      "identity": { "type": "SystemAssigned" },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('functionPlanName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('funcStorageAccountName'))]",
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('functionPlanName'))]",
+        "siteConfig": {
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', variables('funcStorageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('funcStorageAccountName')), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "[parameters('functionAppRuntime')]"
+            },
+            {
+              "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            {
+              "name": "COSMOS_DB_NAME",
+              "value": "[variables('cosmosDatabaseName')]"
+            },
+            {
+              "name": "COSMOS_DB_CONTAINER",
+              "value": "[variables('cosmosContainerName')]"
+            },
+            {
+              "name": "BLOB_CONTAINER_NAME",
+              "value": "[variables('blobContainerName')]"
+            },
+            {
+              "name": "NOTIFICATION_HUB_NAME",
+              "value": "[variables('nhName')]"
+            },
+            {
+              "name": "COSMOS_DB_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=cosmos-db-connection-string)', variables('keyVaultName'))]"
+            },
+            {
+              "name": "NOTIFICATION_HUB_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=notification-hub-connection-string)', variables('keyVaultName'))]"
+            },
+            {
+              "name": "BLOB_STORAGE_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=blob-storage-connection-string)', variables('keyVaultName'))]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "1"
+            },
+            {
+              "name": "WEBSITE_NODE_DEFAULT_VERSION",
+              "value": "~18"
+            }
+          ],
+          "nodeVersion": "~18"
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "functionAppName": {
+      "type": "string",
+      "value": "[variables('functionAppName')]"
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName)]"
+    },
+    "functionAppDefaultHostName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName]"
+    },
+    "principalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2022-09-01', 'full').identity.principalId]"
+    }
+  }
+}

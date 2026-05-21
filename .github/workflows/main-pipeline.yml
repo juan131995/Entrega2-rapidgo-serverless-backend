@@ -1,0 +1,231 @@
+name: RapidGo Infrastructure Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/infra-arm/**'
+      - '.github/workflows/main-pipeline.yml'
+      - '.github/workflows/deploy-*.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+      location:
+        description: 'Azure region'
+        required: true
+        default: 'eastus'
+        type: choice
+        options: [eastus, eastus2, brazilsouth]
+      enable_cosmos_free_tier:
+        description: 'Enable Cosmos DB free tier'
+        required: false
+        default: true
+        type: boolean
+
+# ─────────────────────────────────────────────
+# Job dependency graph:
+#
+#  setup
+#    └─► 01-resource-group
+#          ├─► 02-storage       ─┐
+#          ├─► 03-cosmosdb      ─┤─► 05-keyvault ─► 06-functions ─► 07-apim
+#          └─► 04-notif-hub     ─┘
+# ─────────────────────────────────────────────
+
+jobs:
+
+  # ── 0. Compute deployment variables once ──────────────────────────────────
+  setup:
+    name: 00 · Setup
+    runs-on: ubuntu-latest
+    outputs:
+      env_name: ${{ steps.vars.outputs.env_name }}
+      location: ${{ steps.vars.outputs.location }}
+      rg_name: ${{ steps.vars.outputs.rg_name }}
+      suffix: ${{ steps.vars.outputs.suffix }}
+      enable_free_tier: ${{ steps.vars.outputs.enable_free_tier }}
+
+    steps:
+      - name: Compute deployment variables
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+            LOC="${{ github.event.inputs.location }}"
+            FREE="${{ github.event.inputs.enable_cosmos_free_tier }}"
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            ENV="prod"
+            LOC="eastus"
+            FREE="true"
+          else
+            ENV="dev"
+            LOC="eastus"
+            FREE="true"
+          fi
+
+          # Deterministic suffix: YYMMDDHHmm + 2 random hex chars = 12 chars
+          SUFFIX=$(date +%y%m%d%H%M)$(openssl rand -hex 1)
+          RG="rg-rapidgo-${ENV}-${SUFFIX}"
+
+          echo "env_name=${ENV}"        >> $GITHUB_OUTPUT
+          echo "location=${LOC}"        >> $GITHUB_OUTPUT
+          echo "rg_name=${RG}"          >> $GITHUB_OUTPUT
+          echo "suffix=${SUFFIX}"       >> $GITHUB_OUTPUT
+          echo "enable_free_tier=${FREE}" >> $GITHUB_OUTPUT
+
+          echo "## 🚀 RapidGo Deployment Started" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Variable | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${ENV}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Location | \`${LOC}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | \`${RG}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Suffix | \`${SUFFIX}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Order" >> $GITHUB_STEP_SUMMARY
+          echo "01 Resource Group → 02 Blob Storage ┐" >> $GITHUB_STEP_SUMMARY
+          echo "                 → 03 Cosmos DB      ├→ 05 Key Vault → 06 Functions → 07 APIM" >> $GITHUB_STEP_SUMMARY
+          echo "                 → 04 Notif. Hubs   ┘" >> $GITHUB_STEP_SUMMARY
+
+  # ── 1. Resource Group ─────────────────────────────────────────────────────
+  deploy-resource-group:
+    name: 01 · Resource Group
+    needs: setup
+    uses: ./.github/workflows/deploy-resource-group.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── 2. Blob Storage (parallel with 3 and 4) ───────────────────────────────
+  deploy-storage:
+    name: 02 · Blob Storage
+    needs: [setup, deploy-resource-group]
+    uses: ./.github/workflows/deploy-storage.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+      suffix: ${{ needs.setup.outputs.suffix }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── 3. Cosmos DB (parallel with 2 and 4) ──────────────────────────────────
+  deploy-cosmosdb:
+    name: 03 · Cosmos DB
+    needs: [setup, deploy-resource-group]
+    uses: ./.github/workflows/deploy-cosmosdb.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+      suffix: ${{ needs.setup.outputs.suffix }}
+      enable_free_tier: ${{ needs.setup.outputs.enable_free_tier == 'true' }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── 4. Notification Hubs (parallel with 2 and 3) ──────────────────────────
+  deploy-notification-hub:
+    name: 04 · Notification Hubs
+    needs: [setup, deploy-resource-group]
+    uses: ./.github/workflows/deploy-notification-hub.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+      suffix: ${{ needs.setup.outputs.suffix }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── 5. Key Vault (waits for 2, 3, 4 to have all connection strings) ────────
+  deploy-keyvault:
+    name: 05 · Key Vault
+    needs: [setup, deploy-storage, deploy-cosmosdb, deploy-notification-hub]
+    uses: ./.github/workflows/deploy-keyvault.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+      suffix: ${{ needs.setup.outputs.suffix }}
+      blob_account_name: ${{ needs.deploy-storage.outputs.blob_account_name }}
+      cosmos_account_name: ${{ needs.deploy-cosmosdb.outputs.cosmos_account_name }}
+      nh_namespace_name: ${{ needs.deploy-notification-hub.outputs.nh_namespace_name }}
+      nh_hub_name: ${{ needs.deploy-notification-hub.outputs.nh_hub_name }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── 6. Function App (waits for Key Vault) ─────────────────────────────────
+  deploy-functions-infra:
+    name: 06 · Function App
+    needs: [setup, deploy-keyvault]
+    uses: ./.github/workflows/deploy-functions-infra.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+      suffix: ${{ needs.setup.outputs.suffix }}
+      keyvault_name: ${{ needs.deploy-keyvault.outputs.keyvault_name }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── 7. API Management (waits for Function App) ────────────────────────────
+  deploy-apim:
+    name: 07 · API Management
+    needs: [setup, deploy-functions-infra]
+    uses: ./.github/workflows/deploy-apim.yml
+    with:
+      rg_name: ${{ needs.setup.outputs.rg_name }}
+      location: ${{ needs.setup.outputs.location }}
+      env_name: ${{ needs.setup.outputs.env_name }}
+      suffix: ${{ needs.setup.outputs.suffix }}
+      function_app_hostname: ${{ needs.deploy-functions-infra.outputs.function_app_hostname }}
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # ── Final summary ──────────────────────────────────────────────────────────
+  deployment-summary:
+    name: Deployment Summary
+    needs:
+      - setup
+      - deploy-storage
+      - deploy-cosmosdb
+      - deploy-notification-hub
+      - deploy-keyvault
+      - deploy-functions-infra
+      - deploy-apim
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Print final summary
+        run: |
+          echo "## RapidGo Infrastructure — Final Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | ${{ needs.deploy-resource-group.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Blob Storage | ${{ needs.deploy-storage.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cosmos DB | ${{ needs.deploy-cosmosdb.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Notification Hubs | ${{ needs.deploy-notification-hub.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Key Vault | ${{ needs.deploy-keyvault.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Function App | ${{ needs.deploy-functions-infra.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Management | ${{ needs.deploy-apim.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Resource Group" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ needs.setup.outputs.rg_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Endpoints" >> $GITHUB_STEP_SUMMARY
+          echo "- **Function App**: ${{ needs.deploy-functions-infra.outputs.function_app_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **APIM Gateway**: ${{ needs.deploy-apim.outputs.apim_gateway_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Verify all resources in Azure Portal" >> $GITHUB_STEP_SUMMARY
+          echo "2. Run the \`Deploy Azure Functions\` workflow to deploy function code" >> $GITHUB_STEP_SUMMARY
+          echo "3. Test with the Postman collection in \`/src/\`" >> $GITHUB_STEP_SUMMARY

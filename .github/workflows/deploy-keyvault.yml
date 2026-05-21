@@ -1,0 +1,143 @@
+name: Deploy Key Vault
+
+on:
+  workflow_call:
+    inputs:
+      rg_name:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
+      env_name:
+        required: true
+        type: string
+      suffix:
+        required: true
+        type: string
+      blob_account_name:
+        required: true
+        type: string
+      cosmos_account_name:
+        required: true
+        type: string
+      nh_namespace_name:
+        required: true
+        type: string
+      nh_hub_name:
+        required: true
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+    outputs:
+      keyvault_name:
+        description: "Key Vault name"
+        value: ${{ jobs.deploy.outputs.keyvault_name }}
+      keyvault_uri:
+        description: "Key Vault URI"
+        value: ${{ jobs.deploy.outputs.keyvault_uri }}
+
+jobs:
+  deploy:
+    name: Deploy Key Vault
+    runs-on: ubuntu-latest
+    outputs:
+      keyvault_name: ${{ steps.outputs.outputs.keyVaultName }}
+      keyvault_uri: ${{ steps.outputs.outputs.keyVaultUri }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Register Key Vault provider
+        run: az provider register --namespace Microsoft.KeyVault --wait
+
+      - name: Deploy Key Vault ARM template
+        id: deploy
+        run: |
+          az deployment group create \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "keyvault-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --template-file src/infra-arm/keyvault/template.json \
+            --parameters environmentName="${{ inputs.env_name }}" suffix="${{ inputs.suffix }}" \
+            --mode Incremental
+
+      - name: Capture Key Vault name and URI
+        id: outputs
+        run: |
+          RESULT=$(az deployment group show \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "keyvault-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --query properties.outputs -o json)
+
+          KV_NAME=$(echo "$RESULT" | jq -r '.keyVaultName.value')
+          KV_URI=$(echo "$RESULT" | jq -r '.keyVaultUri.value')
+
+          echo "keyVaultName=$KV_NAME" >> $GITHUB_OUTPUT
+          echo "keyVaultUri=$KV_URI" >> $GITHUB_OUTPUT
+
+      - name: Store Cosmos DB connection string in Key Vault
+        run: |
+          KV_NAME="${{ steps.outputs.outputs.keyVaultName }}"
+          echo "📦 Storing Cosmos DB connection string..."
+          CONN_STR=$(az cosmosdb keys list \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "${{ inputs.cosmos_account_name }}" \
+            --type connection-strings \
+            --query "connectionStrings[0].connectionString" \
+            -o tsv)
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "cosmos-db-connection-string" \
+            --value "$CONN_STR" \
+            --output none
+          echo "✅ cosmos-db-connection-string stored"
+
+      - name: Store Blob Storage connection string in Key Vault
+        run: |
+          KV_NAME="${{ steps.outputs.outputs.keyVaultName }}"
+          echo "📦 Storing Blob Storage connection string..."
+          CONN_STR=$(az storage account show-connection-string \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "${{ inputs.blob_account_name }}" \
+            --query connectionString \
+            -o tsv)
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "blob-storage-connection-string" \
+            --value "$CONN_STR" \
+            --output none
+          echo "✅ blob-storage-connection-string stored"
+
+      - name: Store Notification Hub connection string in Key Vault
+        run: |
+          KV_NAME="${{ steps.outputs.outputs.keyVaultName }}"
+          echo "📦 Storing Notification Hub connection string..."
+          CONN_STR=$(az notification-hubs namespace authorization-rule list-keys \
+            --resource-group "${{ inputs.rg_name }}" \
+            --namespace-name "${{ inputs.nh_namespace_name }}" \
+            --name "RootManageSharedAccessKey" \
+            --query primaryConnectionString \
+            -o tsv)
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "notification-hub-connection-string" \
+            --value "$CONN_STR" \
+            --output none
+          echo "✅ notification-hub-connection-string stored"
+
+      - name: Deployment summary
+        run: |
+          KV_NAME="${{ steps.outputs.outputs.keyVaultName }}"
+          echo "### ✅ Key Vault" >> $GITHUB_STEP_SUMMARY
+          echo "- Vault: $KV_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- Secrets: cosmos-db-connection-string, blob-storage-connection-string, notification-hub-connection-string" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

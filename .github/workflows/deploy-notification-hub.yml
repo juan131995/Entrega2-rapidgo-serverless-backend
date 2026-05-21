@@ -1,0 +1,80 @@
+name: Deploy Notification Hub
+
+on:
+  workflow_call:
+    inputs:
+      rg_name:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
+      env_name:
+        required: true
+        type: string
+      suffix:
+        required: true
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+    outputs:
+      nh_namespace_name:
+        description: "Notification Hub namespace name"
+        value: ${{ jobs.deploy.outputs.nh_namespace_name }}
+      nh_hub_name:
+        description: "Notification Hub name"
+        value: ${{ jobs.deploy.outputs.nh_hub_name }}
+      service_bus_endpoint:
+        description: "Notification Hub service bus endpoint"
+        value: ${{ jobs.deploy.outputs.service_bus_endpoint }}
+
+jobs:
+  deploy:
+    name: Deploy Notification Hub
+    runs-on: ubuntu-latest
+    outputs:
+      nh_namespace_name: ${{ steps.outputs.outputs.nhNamespaceName }}
+      nh_hub_name: ${{ steps.outputs.outputs.nhHubName }}
+      service_bus_endpoint: ${{ steps.outputs.outputs.serviceBusEndpoint }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Register Notification Hubs provider
+        run: az provider register --namespace Microsoft.NotificationHubs --wait
+
+      - name: Deploy Notification Hub ARM template
+        id: deploy
+        run: |
+          az deployment group create \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "notif-hub-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --template-file src/infra-arm/notification-hub/template.json \
+            --parameters environmentName="${{ inputs.env_name }}" suffix="${{ inputs.suffix }}" \
+            --mode Incremental
+
+      - name: Capture outputs
+        id: outputs
+        run: |
+          RESULT=$(az deployment group show \
+            --resource-group "${{ inputs.rg_name }}" \
+            --name "notif-hub-${{ github.run_number }}-${{ github.run_attempt }}" \
+            --query properties.outputs -o json)
+
+          echo "nhNamespaceName=$(echo "$RESULT" | jq -r '.nhNamespaceName.value')" >> $GITHUB_OUTPUT
+          echo "nhHubName=$(echo "$RESULT" | jq -r '.nhHubName.value')" >> $GITHUB_OUTPUT
+          echo "serviceBusEndpoint=$(echo "$RESULT" | jq -r '.serviceBusEndpoint.value')" >> $GITHUB_OUTPUT
+
+          echo "### ✅ Notification Hubs" >> $GITHUB_STEP_SUMMARY
+          echo "- Namespace: $(echo "$RESULT" | jq -r '.nhNamespaceName.value')" >> $GITHUB_STEP_SUMMARY
+          echo "- Hub: $(echo "$RESULT" | jq -r '.nhHubName.value')" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

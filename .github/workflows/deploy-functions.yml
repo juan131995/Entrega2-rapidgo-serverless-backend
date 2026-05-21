@@ -53,21 +53,28 @@ jobs:
       - name: Get Function App name
         id: get-app-name
         run: |
-          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
-          APP_NAME=$(az functionapp list --resource-group "$RG" --query "[0].name" -o tsv)
-          if [ -z "$APP_NAME" ]; then
-            echo "::error::No Function App found in resource group $RG. Run deploy-infra workflow first."
+          ENV="${{ steps.env.outputs.name }}"
+          # Find function app by environment tag across all resource groups
+          APP_NAME=$(az functionapp list \
+            --query "[?tags.environment=='${ENV}' && tags.managedBy=='github-actions'].name | [0]" \
+            -o tsv)
+          if [ -z "$APP_NAME" ] || [ "$APP_NAME" == "None" ]; then
+            echo "::error::No Function App found with tags environment=${ENV} and managedBy=github-actions. Run main-pipeline workflow first."
             exit 1
           fi
+          RG=$(az functionapp list \
+            --query "[?tags.environment=='${ENV}' && tags.managedBy=='github-actions'].resourceGroup | [0]" \
+            -o tsv)
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "Found Function App: $APP_NAME"
+          echo "resource_group=$RG" >> $GITHUB_OUTPUT
+          echo "Found Function App: $APP_NAME in $RG"
 
       - name: Capture pre-deployment state
         id: pre-deploy
         continue-on-error: true
         run: |
           APP="${{ steps.get-app-name.outputs.app_name }}"
-          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
+          RG="${{ steps.get-app-name.outputs.resource_group }}"
 
           # Capturar deployment slot activo
           ACTIVE_SLOT=$(az functionapp show --name "$APP" --resource-group "$RG" --query "state" -o tsv)
@@ -102,7 +109,7 @@ jobs:
         if: failure() && steps.fa.conclusion == 'failure'
         run: |
           APP="${{ steps.get-app-name.outputs.app_name }}"
-          RG="az-rapidgo-${{ steps.env.outputs.name }}-rg"
+          RG="${{ steps.get-app-name.outputs.resource_group }}"
 
           echo "## 🔴 Function Deployment Failed - Verificando Estado" | tee -a $GITHUB_STEP_SUMMARY
           echo "" | tee -a $GITHUB_STEP_SUMMARY
