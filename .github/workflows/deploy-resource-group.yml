@@ -1,0 +1,97 @@
+name: Deploy Resource Group
+
+on:
+  workflow_call:
+    inputs:
+      rg_name:
+        required: true
+        type: string
+      location:
+        required: true
+        type: string
+      env_name:
+        required: true
+        type: string
+    secrets:
+      AZURE_CREDENTIALS:
+        required: true
+
+jobs:
+  deploy:
+    name: Create Resource Group
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Purge soft-deleted Key Vaults
+        run: |
+          echo "🔍 Checking for soft-deleted Key Vaults..."
+          DELETED=$(az keyvault list-deleted --query "[].{name:name, location:properties.location}" -o json 2>/dev/null || echo "[]")
+          COUNT=$(echo "$DELETED" | jq '. | length')
+          echo "Found $COUNT soft-deleted Key Vault(s)"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "$DELETED" | jq -c '.[]' | while read -r kv; do
+              KV_NAME=$(echo "$kv" | jq -r '.name')
+              KV_LOC=$(echo "$kv" | jq -r '.location')
+              echo "  Purging: $KV_NAME"
+              az keyvault purge --name "$KV_NAME" --location "$KV_LOC" 2>/dev/null || echo "  ⚠️  Could not purge $KV_NAME"
+            done
+          fi
+
+      - name: Purge soft-deleted APIM services
+        run: |
+          echo "🔍 Checking for soft-deleted APIM services..."
+          DELETED=$(az rest \
+            --method get \
+            --url "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/providers/Microsoft.ApiManagement/deletedservices?api-version=2023-05-01-preview" \
+            --query "value[].{name:name, location:location}" \
+            -o json 2>/dev/null || echo "[]")
+          COUNT=$(echo "$DELETED" | jq '. | length')
+          echo "Found $COUNT soft-deleted APIM service(s)"
+          if [ "$COUNT" -gt 0 ]; then
+            SUB_ID=$(az account show --query id -o tsv)
+            echo "$DELETED" | jq -c '.[]' | while read -r apim; do
+              APIM_NAME=$(echo "$apim" | jq -r '.name')
+              APIM_LOC=$(echo "$apim" | jq -r '.location')
+              echo "  Purging: $APIM_NAME"
+              az rest \
+                --method delete \
+                --url "https://management.azure.com/subscriptions/${SUB_ID}/providers/Microsoft.ApiManagement/locations/${APIM_LOC}/deletedservices/${APIM_NAME}?api-version=2023-05-01-preview" \
+                2>/dev/null || echo "  ⚠️  Could not purge $APIM_NAME"
+            done
+          fi
+
+      - name: Delete old resource groups for this environment
+        run: |
+          echo "🔍 Checking for old resource groups (env=${{ inputs.env_name }})..."
+          OLD_RGS=$(az group list \
+            --query "[?starts_with(name, 'rg-rapidgo-${{ inputs.env_name }}-')].name" \
+            -o tsv)
+          if [ -n "$OLD_RGS" ]; then
+            echo "Found old resource groups:"
+            echo "$OLD_RGS"
+            for RG in $OLD_RGS; do
+              echo "  🗑️  Deleting: $RG"
+              az group delete --name "$RG" --yes --no-wait
+            done
+            echo "⏳ Waiting 90s for deletions to progress..."
+            sleep 90
+          else
+            echo "No old resource groups found"
+          fi
+
+      - name: Create resource group
+        run: |
+          echo "✅ Creating: ${{ inputs.rg_name }}"
+          az group create \
+            --name "${{ inputs.rg_name }}" \
+            --location "${{ inputs.location }}" \
+            --tags environment="${{ inputs.env_name }}" managedBy="github-actions" project="rapidgo-serverless"
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

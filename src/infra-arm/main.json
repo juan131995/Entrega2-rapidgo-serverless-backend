@@ -1,0 +1,719 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": {
+        "description": "Prefix name used for all deployed resources"
+      }
+    },
+    "randomSuffix": {
+      "type": "string",
+      "defaultValue": "[substring(uniqueString(resourceGroup().id, deployment().name), 0, 14)]",
+      "maxLength": 14,
+      "metadata": {
+        "description": "Random 14-character suffix for resource names (YYMMDDHHmm + 4 hex chars)"
+      }
+    },
+    "functionAppRuntime": {
+      "type": "string",
+      "defaultValue": "node",
+      "allowedValues": ["node", "python"]
+    },
+    "cosmosDBFreeTier": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "skuAPIM": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": ["Developer", "Basic", "Standard"]
+    },
+    "jwtOpenIdConfigUrl": {
+      "type": "string",
+      "defaultValue": "https://rapidgo.auth0.com/.well-known/openid-configuration",
+      "metadata": {
+        "description": "OpenID Connect configuration URL for JWT validation"
+      }
+    },
+    "jwtAudience": {
+      "type": "string",
+      "defaultValue": "https://api.rapidgo.app",
+      "metadata": {
+        "description": "Expected audience (aud) claim in JWT tokens"
+      }
+    },
+    "jwtIssuer": {
+      "type": "string",
+      "defaultValue": "https://rapidgo.auth0.com/",
+      "metadata": {
+        "description": "Expected issuer (iss) claim in JWT tokens"
+      }
+    },
+    "rateLimitCalls": {
+      "type": "int",
+      "defaultValue": 500,
+      "metadata": {
+        "description": "Number of calls allowed per renewal period" 
+      }
+    },
+    "rateLimitRenewalPeriod": {
+      "type": "int",
+      "defaultValue": 60,
+      "metadata": {
+        "description": "Renewal period in seconds for rate limiting"
+      }
+    }
+  },
+  "variables": {
+    "uniqueSuffix": "[toLower(parameters('randomSuffix'))]",
+    "envName": "[toLower(parameters('environmentName'))]",
+    "envShort": "[if(equals(toLower(parameters('environmentName')), 'prod'), 'p', 'd')]",
+    "storageAccountName": "[toLower(take(concat('rgf', variables('envShort'), 'v1', variables('uniqueSuffix')), 24))]",
+    "functionAppName": "[concat('rg-', variables('envName'), '-v1-func-', variables('uniqueSuffix'))]",
+    "functionPlanName": "[concat('rg-', variables('envName'), '-v1-plan-', variables('uniqueSuffix'))]",
+    "apimName": "[concat('rg-', variables('envName'), '-v1-apim-', variables('uniqueSuffix'))]",
+    "cosmosAccountName": "[toLower(take(concat('rgc', variables('envShort'), 'v1', variables('uniqueSuffix')), 44))]",
+    "cosmosDatabaseName": "[concat('rg-', variables('envName'), '-v1-db-', variables('uniqueSuffix'))]",
+    "cosmosContainerName": "[concat('pedidos-v1-', variables('uniqueSuffix'))]",
+    "blobStorageAccountName": "[toLower(take(concat('rgb', variables('envShort'), 'v1', variables('uniqueSuffix')), 24))]",
+    "blobContainerName": "[concat('entregas-v1-', variables('uniqueSuffix'))]",
+    "notificationHubNamespace": "[concat('rg-', variables('envName'), '-v1-notif-', variables('uniqueSuffix'))]",
+    "notificationHubName": "[concat('rg-', variables('envName'), '-v1-notif-hub-', variables('uniqueSuffix'))]",
+    "keyVaultName": "[toLower(take(concat('rgkv', variables('envShort'), 'v1', variables('uniqueSuffix')), 24))]",
+    "logAnalyticsName": "[concat('rg-', variables('envName'), '-v1-logs-', variables('uniqueSuffix'))]",
+    "appInsightsName": "[concat('rg-', variables('envName'), '-v1-ai-', variables('uniqueSuffix'))]",
+    "apimVersion": "2023-05-01-preview",
+    "nhVersion": "2023-01-01-preview",
+    "cosmosDBVersion": "2023-11-15",
+    "apiVersionSetName": "[concat('rapidgo-v1-api-version-set-', variables('uniqueSuffix'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('blobStorageAccountName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template",
+        "purpose": "RapidGo file storage"
+      },
+      "properties": {
+        "accessTier": "Hot",
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "defaultAction": "Allow",
+          "virtualNetworkRules": [],
+          "ipRules": []
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default', variables('blobStorageAccountName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]"
+      ],
+      "properties": {
+        "cors": {
+          "corsRules": []
+        },
+        "deleteRetentionPolicy": {
+          "enabled": true,
+          "days": 7
+        },
+        "containerDeleteRetentionPolicy": {
+          "enabled": true,
+          "days": 7
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-01-01",
+      "name": "[format('{0}/default/{1}', variables('blobStorageAccountName'), variables('blobContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('blobStorageAccountName'), 'default')]"
+      ],
+      "properties": {
+        "publicAccess": "None"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[variables('cosmosAccountName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "GlobalDocumentDB",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template",
+        "defaultExperience": "Core (SQL)"
+      },
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "locations": [
+          {
+            "locationName": "[resourceGroup().location]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ],
+        "capabilities": [],
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session",
+          "maxIntervalInSeconds": 5,
+          "maxStalenessPrefix": 100
+        },
+        "enableMultipleWriteLocations": false,
+        "enableFreeTier": "[parameters('cosmosDBFreeTier')]",
+        "disableKeyBasedMetadataWriteAccess": false,
+        "disableLocalAuth": false,
+        "backupPolicy": {
+          "type": "Periodic",
+          "periodicModeProperties": {
+            "backupIntervalInMinutes": 240,
+            "backupRetentionIntervalInHours": 8
+          }
+        },
+        "publicNetworkAccess": "Enabled",
+        "networkAclBypass": "None"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[format('{0}/{1}', variables('cosmosAccountName'), variables('cosmosDatabaseName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[variables('cosmosDatabaseName')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "[variables('cosmosDBVersion')]",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosAccountName'), variables('cosmosDatabaseName'), variables('cosmosContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('cosmosAccountName'), variables('cosmosDatabaseName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[variables('cosmosContainerName')]",
+          "partitionKey": {
+            "paths": ["/tipo"],
+            "kind": "Hash"
+          },
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ],
+            "compositeIndexes": [
+              [
+                {
+                  "path": "/tipo",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/usuarioId",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "descending"
+                }
+              ],
+              [
+                {
+                  "path": "/tipo",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/estado",
+                  "order": "ascending"
+                },
+                {
+                  "path": "/createdAt",
+                  "order": "descending"
+                }
+              ]
+            ]
+          },
+          "defaultTtl": 2592000
+        }
+      }
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[variables('notificationHubNamespace')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Free"
+      },
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "zoneRedundancy": "Disabled"
+      }
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces/notificationHubs",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[format('{0}/{1}', variables('notificationHubNamespace'), variables('notificationHubName'))]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.NotificationHubs/namespaces', variables('notificationHubNamespace'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "apnsCredential": null,
+        "wnsCredential": null
+      }
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[format('{0}/{1}/DefaultFullSharedAccessSignature', variables('notificationHubNamespace'), variables('notificationHubName'))]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs', variables('notificationHubNamespace'), variables('notificationHubName'))]"
+      ],
+      "properties": {
+        "rights": ["Listen", "Send", "Manage"]
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('keyVaultName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "tenantId": "[subscription().tenantId]",
+        "enabledForTemplateDeployment": true,
+        "enableRbacAuthorization": false,
+        "accessPolicies": []
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/cosmos-db-connection-string', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))]"
+      ],
+      "properties": {
+        "value": "[listConnectionStrings(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName')), variables('cosmosDBVersion')).connectionStrings[0].connectionString]"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/blob-storage-connection-string', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))]"
+      ],
+      "properties": {
+        "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', variables('blobStorageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName')), '2023-01-01').keys[0].value)]"
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/secrets",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/notification-hub-connection-string', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules', variables('notificationHubNamespace'), variables('notificationHubName'), 'DefaultFullSharedAccessSignature')]"
+      ],
+      "properties": {
+        "value": "[listKeys(resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules', variables('notificationHubNamespace'), variables('notificationHubName'), 'DefaultFullSharedAccessSignature'), variables('nhVersion')).primaryConnectionString]"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionPlanName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic",
+        "size": "Y1",
+        "family": "Y",
+        "capacity": 0
+      },
+      "kind": "functionapp",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "reserved": false,
+        "perSiteScaling": false,
+        "maximumElasticWorkerCount": 1
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('logAnalyticsName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30,
+        "features": {
+          "enableLogAccessUsingOnlyResourcePermissions": true
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[variables('appInsightsName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "web",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-09-01",
+      "name": "[variables('functionAppName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "functionapp",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('functionPlanName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+        "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('functionPlanName'))]",
+        "siteConfig": {
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', variables('storageAccountName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "[parameters('functionAppRuntime')]"
+            },
+            {
+              "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            {
+              "name": "COSMOS_DB_NAME",
+              "value": "[variables('cosmosDatabaseName')]"
+            },
+            {
+              "name": "COSMOS_DB_CONTAINER",
+              "value": "[variables('cosmosContainerName')]"
+            },
+            {
+              "name": "COSMOS_DB_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/cosmos-db-connection-string/)', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri)]"
+            },
+            {
+              "name": "NOTIFICATION_HUB_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/notification-hub-connection-string/)', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri)]"
+            },
+            {
+              "name": "NOTIFICATION_HUB_NAME",
+              "value": "[variables('notificationHubName')]"
+            },
+            {
+              "name": "BLOB_STORAGE_CONNECTION_STRING",
+              "value": "[format('@Microsoft.KeyVault(SecretUri={0}secrets/blob-storage-connection-string/)', reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))).vaultUri)]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "1"
+            },
+            {
+              "name": "WEBSITE_NODE_DEFAULT_VERSION",
+              "value": "~18"
+            }
+          ],
+          "nodeVersion": "~18"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults/accessPolicies",
+      "apiVersion": "2023-07-01",
+      "name": "[format('{0}/add', variables('keyVaultName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ],
+      "properties": {
+        "accessPolicies": [
+          {
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2022-09-01', 'full').identity.principalId]",
+            "permissions": {
+              "secrets": ["get", "list"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[variables('apimName')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ],
+      "sku": {
+        "name": "[parameters('skuAPIM')]",
+        "capacity": 1
+      },
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "arm-template"
+      },
+      "properties": {
+        "publisherName": "RapidGo Team",
+        "publisherEmail": "team@rapidgo.app",
+        "notificationSenderEmail": "noreply@rapidgo.app",
+        "hostnameConfigurations": [],
+        "virtualNetworkType": "None",
+        "disableGateway": false,
+        "apiVersionConstraint": {
+          "minApiVersion": "2019-01-01"
+        },
+        "restore": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rateLimitCalls', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "rateLimitCalls",
+        "value": "[string(parameters('rateLimitCalls'))]",
+        "secret": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rateLimitRenewalPeriod', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "rateLimitRenewalPeriod",
+        "value": "[string(parameters('rateLimitRenewalPeriod'))]",
+        "secret": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/jwtOpenIdConfigUrl', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "jwtOpenIdConfigUrl",
+        "value": "[parameters('jwtOpenIdConfigUrl')]",
+        "secret": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/jwtAudience', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "jwtAudience",
+        "value": "[parameters('jwtAudience')]",
+        "secret": false
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apiVersionSets",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/{1}', variables('apimName'), variables('apiVersionSetName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "RapidGo API Version Set",
+        "description": "Version set for RapidGo API management",
+        "versioningScheme": "Segment",
+        "versionQueryName": "api-version",
+        "versionHeaderName": "X-Api-Version"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rapidgo-api', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]",
+        "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]"
+      ],
+      "properties": {
+        "displayName": "RapidGo API",
+        "description": "API principal para la plataforma de domicilios RapidGo",
+        "serviceUrl": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName)]",
+        "path": "api/v1",
+        "protocols": ["https"],
+        "apiVersion": "v1",
+        "apiVersionSetId": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]",
+        "apiRevision": "1",
+        "subscriptionRequired": true,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null
+        }
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/policies",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rapidgo-api/policy', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', variables('apimName'), 'rapidgo-api')]",
+        "[resourceId('Microsoft.ApiManagement/service/namedValues', variables('apimName'), 'rateLimitCalls')]",
+        "[resourceId('Microsoft.ApiManagement/service/namedValues', variables('apimName'), 'rateLimitRenewalPeriod')]",
+        "[resourceId('Microsoft.ApiManagement/service/namedValues', variables('apimName'), 'jwtOpenIdConfigUrl')]",
+        "[resourceId('Microsoft.ApiManagement/service/namedValues', variables('apimName'), 'jwtAudience')]"
+      ],
+      "properties": {
+        "value": "<policies>\n  <inbound>\n    <base />\n    <rate-limit calls=\"{{rateLimitCalls}}\" renewal-period=\"{{rateLimitRenewalPeriod}}\" />\n    <!-- JWT Validation temporarily disabled for development -->\n    <!-- To enable: Configure Auth0 tenant and uncomment below -->\n    <!--\n    <validate-jwt header-name=\"Authorization\" failed-validation-httpcode=\"401\" failed-validation-error-message=\"Unauthorized: Invalid or expired JWT token\">\n      <openid-config url=\"{{jwtOpenIdConfigUrl}}\" />\n      <required-claims>\n        <claim name=\"aud\" match=\"all\">\n          <value>{{jwtAudience}}</value>\n        </claim>\n      </required-claims>\n    </validate-jwt>\n    -->\n    <set-header name=\"X-Forwarded-For\" exists-action=\"override\">\n      <value>@(context.Request.IpAddress)</value>\n    </set-header>\n  </inbound>\n  <backend>\n    <forward-request timeout=\"120\" />\n  </backend>\n  <outbound>\n    <base />\n    <set-header name=\"X-Response-Time\" exists-action=\"override\">\n      <value>@(context.Response.Headers.GetValueOrDefault(\"X-Response-Time\", \"0\"))</value>\n    </set-header>\n    <set-header name=\"X-Powered-By\" exists-action=\"delete\" />\n  </outbound>\n  <on-error>\n    <base />\n    <set-header name=\"X-Error-Source\" exists-action=\"override\">\n      <value>APIM-Gateway</value>\n    </set-header>\n    <set-body>@{\n      return new JObject(\n        new JProperty(\"error\", context.LastError.Source),\n        new JProperty(\"message\", context.LastError.Message),\n        new JProperty(\"timestamp\", DateTime.UtcNow.ToString(\"o\"))\n      ).ToString();\n    }</set-body>\n  </on-error>\n</policies>",
+        "format": "rawxml"
+      }
+    }
+  ],
+  "outputs": {
+    "functionAppDefaultHostName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName'))).defaultHostName]"
+    },
+    "apimGatewayUrl": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ApiManagement/service', variables('apimName'))).gatewayUrl]"
+    },
+    "cosmosDbEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosAccountName'))).documentEndpoint]"
+    },
+    "blobStorageEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('blobStorageAccountName'))).primaryEndpoints.blob]"
+    },
+    "notificationHubEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.NotificationHubs/namespaces', variables('notificationHubNamespace'))).serviceBusEndpoint]"
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "apiVersionSetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', variables('apimName'), variables('apiVersionSetName'))]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+    },
+    "appInsightsInstrumentationKey": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').InstrumentationKey]"
+    }
+  }
+}

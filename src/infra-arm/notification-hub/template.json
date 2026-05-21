@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "dev",
+      "metadata": { "description": "Environment name (dev/prod)" }
+    },
+    "suffix": {
+      "type": "string",
+      "metadata": { "description": "Unique suffix shared across all resources in this deployment" }
+    }
+  },
+  "variables": {
+    "envName": "[toLower(parameters('environmentName'))]",
+    "sfx": "[toLower(parameters('suffix'))]",
+    "nhNamespace": "[concat('rg-', variables('envName'), '-v1-notif-', variables('sfx'))]",
+    "nhName": "[concat('rg-', variables('envName'), '-v1-hub-', variables('sfx'))]",
+    "nhVersion": "2023-01-01-preview"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.NotificationHubs/namespaces",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[variables('nhNamespace')]",
+      "location": "[resourceGroup().location]",
+      "sku": { "name": "Free" },
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions"
+      },
+      "properties": { "zoneRedundancy": "Disabled" }
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces/notificationHubs",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[format('{0}/{1}', variables('nhNamespace'), variables('nhName'))]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.NotificationHubs/namespaces', variables('nhNamespace'))]"
+      ],
+      "tags": {
+        "environment": "[parameters('environmentName')]",
+        "managedBy": "github-actions"
+      },
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.NotificationHubs/namespaces/notificationHubs/authorizationRules",
+      "apiVersion": "[variables('nhVersion')]",
+      "name": "[format('{0}/{1}/DefaultFullSharedAccessSignature', variables('nhNamespace'), variables('nhName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.NotificationHubs/namespaces/notificationHubs', variables('nhNamespace'), variables('nhName'))]"
+      ],
+      "properties": {
+        "rights": ["Listen", "Send", "Manage"]
+      }
+    }
+  ],
+  "outputs": {
+    "nhNamespaceName": {
+      "type": "string",
+      "value": "[variables('nhNamespace')]"
+    },
+    "nhHubName": {
+      "type": "string",
+      "value": "[variables('nhName')]"
+    },
+    "serviceBusEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.NotificationHubs/namespaces', variables('nhNamespace'))).serviceBusEndpoint]"
+    }
+  }
+}
