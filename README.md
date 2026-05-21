@@ -107,6 +107,14 @@ Las Azure Functions acceden a los secretos mediante referencias Key Vault (`@Mic
 
 ---
 
+## Diagrama de Arquitectura
+
+Visión general de la arquitectura de la solución RapidGo Backend Serverless, mostrando el flujo de datos desde el usuario a través de los servicios Azure principales y los servicios complementarios de soporte.
+
+![Diagrama de Arquitectura](assets/Diagramas/diagrama-arq.png)
+
+---
+
 ## Stack Tecnológico
 
 | Capa | Tecnología |
@@ -484,14 +492,6 @@ El API Gateway aplica las siguientes políticas a todas las peticiones:
 - **Header cleanup**: elimina `X-Powered-By` de las respuestas
 - **Timeout de backend**: 120 segundos máximo por petición
 - **Autenticación JWT** (comentada, lista para activar con Auth0)
-
----
-
-## Diagrama de Arquitectura
-
-Visión general de la arquitectura de la solución RapidGo Backend Serverless, mostrando el flujo de datos desde el usuario a través de los servicios Azure principales y los servicios complementarios de soporte.
-
-![Diagrama de Arquitectura](assets/Diagramas/diagrama-arq.png)
 
 ---
 
