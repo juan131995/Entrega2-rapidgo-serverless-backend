@@ -44,9 +44,7 @@ resource functionPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
     environment: environmentName
     managedBy: 'bicep'
   }
-  properties: {
-    reserved: true
-  }
+  properties: {}
 }
 
 resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
