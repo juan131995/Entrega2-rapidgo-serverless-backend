@@ -158,6 +158,48 @@
       }
     },
     {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rapidgo-api/post-proxy', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', variables('apimName'), 'rapidgo-api')]"
+      ],
+      "properties": {
+        "displayName": "POST proxy",
+        "method": "POST",
+        "urlTemplate": "/*",
+        "description": "Proxy all POST requests to Function App"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rapidgo-api/get-proxy', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', variables('apimName'), 'rapidgo-api')]"
+      ],
+      "properties": {
+        "displayName": "GET proxy",
+        "method": "GET",
+        "urlTemplate": "/*",
+        "description": "Proxy all GET requests to Function App"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "[variables('apimVersion')]",
+      "name": "[format('{0}/rapidgo-api/put-proxy', variables('apimName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', variables('apimName'), 'rapidgo-api')]"
+      ],
+      "properties": {
+        "displayName": "PUT proxy",
+        "method": "PUT",
+        "urlTemplate": "/*",
+        "description": "Proxy all PUT requests to Function App"
+      }
+    },
+    {
       "type": "Microsoft.ApiManagement/service/apis/policies",
       "apiVersion": "[variables('apimVersion')]",
       "name": "[format('{0}/rapidgo-api/policy', variables('apimName'))]",
