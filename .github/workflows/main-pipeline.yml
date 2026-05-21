@@ -18,9 +18,9 @@ on:
       location:
         description: 'Azure region'
         required: true
-        default: 'eastus'
+        default: 'eastus2'
         type: choice
-        options: [eastus, eastus2, brazilsouth]
+        options: [eastus2, brazilsouth, eastus, centralus]
       enable_cosmos_free_tier:
         description: 'Enable Cosmos DB free tier'
         required: false
@@ -60,11 +60,11 @@ jobs:
             FREE="${{ github.event.inputs.enable_cosmos_free_tier }}"
           elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
             ENV="prod"
-            LOC="eastus"
+            LOC="eastus2"
             FREE="true"
           else
             ENV="dev"
-            LOC="eastus"
+            LOC="eastus2"
             FREE="true"
           fi
 
