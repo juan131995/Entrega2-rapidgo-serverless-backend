@@ -1,0 +1,138 @@
+{
+  "info": {
+    "_postman_id": "995382dc-fab5-4c15-ac17-714038247a73",
+    "name": "RapidGo-dev",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Registrar Pedido",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "    pm.environment.set(\"pedido_id\", pm.response.json().id);",
+              "    console.log('pedido_id guardado:', pm.response.json().id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Ocp-Apim-Subscription-Key", "value": "{{apim_key}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"usuarioId\": \"usuario-001\",\n    \"origen\": {\n        \"direccion\": \"Calle 50 #40-10, Medellín\",\n        \"lat\": 6.2442,\n        \"lng\": -75.5812\n    },\n    \"destino\": {\n        \"direccion\": \"El Poblado, Medellín\",\n        \"lat\": 6.2087,\n        \"lng\": -75.5742\n    },\n    \"producto\": {\n        \"nombre\": \"Hamburguesa doble\",\n        \"descripcion\": \"Con papas y gaseosa\"\n    }\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{apim_url}}/registro-pedido",
+          "host": ["{{apim_url}}"],
+          "path": ["registro-pedido"]
+        }
+      }
+    },
+    {
+      "name": "02 - Actualizar Estado (asignado)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Ocp-Apim-Subscription-Key", "value": "{{apim_key}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"estado\": \"asignado\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{apim_url}}/act-estado/{{pedido_id}}",
+          "host": ["{{apim_url}}"],
+          "path": ["act-estado", "{{pedido_id}}"]
+        }
+      }
+    },
+    {
+      "name": "03 - Actualizar Estado (recogido)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Ocp-Apim-Subscription-Key", "value": "{{apim_key}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"estado\": \"recogido\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{apim_url}}/act-estado/{{pedido_id}}",
+          "host": ["{{apim_url}}"],
+          "path": ["act-estado", "{{pedido_id}}"]
+        }
+      }
+    },
+    {
+      "name": "04 - Actualizar Estado (enCamino)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Ocp-Apim-Subscription-Key", "value": "{{apim_key}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"estado\": \"enCamino\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{apim_url}}/act-estado/{{pedido_id}}",
+          "host": ["{{apim_url}}"],
+          "path": ["act-estado", "{{pedido_id}}"]
+        }
+      }
+    },
+    {
+      "name": "05 - Enviar Notificacion",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Ocp-Apim-Subscription-Key", "value": "{{apim_key}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"pedidoId\": \"{{pedido_id}}\",\n    \"titulo\": \"Tu pedido está en camino\",\n    \"mensaje\": \"El repartidor está a 5 minutos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{apim_url}}/notificacion",
+          "host": ["{{apim_url}}"],
+          "path": ["notificacion"]
+        }
+      }
+    },
+    {
+      "name": "06 - Consultar Historial",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Ocp-Apim-Subscription-Key", "value": "{{apim_key}}" }
+        ],
+        "url": {
+          "raw": "{{apim_url}}/historial?usuarioId=usuario-001",
+          "host": ["{{apim_url}}"],
+          "path": ["historial"],
+          "query": [{ "key": "usuarioId", "value": "usuario-001" }]
+        }
+      }
+    }
+  ]
+}
