@@ -54,28 +54,34 @@ jobs:
         id: get-app-name
         run: |
           ENV="${{ steps.env.outputs.name }}"
-          # Find the resource group by name pattern: rg-rapidgo-{env}-*
-          RG=$(az group list \
-            --query "[?starts_with(name, 'rg-rapidgo-${ENV}-')].name | [0]" \
-            -o tsv)
-          if [ -z "$RG" ] || [ "$RG" == "None" ]; then
+          # Get all RGs matching the pattern, sorted newest first (suffix is timestamp-based)
+          RGS=$(az group list \
+            --query "sort_by([?starts_with(name, 'rg-rapidgo-${ENV}-')], &name)" \
+            -o json | jq -r 'reverse | .[].name')
+          if [ -z "$RGS" ]; then
             echo "::error::No resource group found matching rg-rapidgo-${ENV}-*. Run main-pipeline workflow first."
             exit 1
           fi
-          echo "Found resource group: $RG"
-          # Find function app inside that resource group
-          APP_NAME=$(az functionapp list \
-            --resource-group "$RG" \
-            --query "[0].name" \
-            -o tsv)
-          if [ -z "$APP_NAME" ] || [ "$APP_NAME" == "None" ]; then
-            echo "::error::No Function App found in resource group $RG."
-            az resource list --resource-group "$RG" --query "[].{name:name, type:type}" -o table
+          echo "Resource groups found (newest first):"
+          echo "$RGS"
+          # Find the most recent RG that contains a Function App
+          APP_NAME=""
+          FOUND_RG=""
+          for RG in $RGS; do
+            APP=$(az functionapp list --resource-group "$RG" --query "[0].name" -o tsv 2>/dev/null)
+            if [ -n "$APP" ] && [ "$APP" != "None" ]; then
+              APP_NAME="$APP"
+              FOUND_RG="$RG"
+              break
+            fi
+          done
+          if [ -z "$APP_NAME" ]; then
+            echo "::error::No Function App found in any resource group. Infrastructure deployment may be incomplete."
             exit 1
           fi
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
-          echo "resource_group=$RG" >> $GITHUB_OUTPUT
-          echo "Found Function App: $APP_NAME in $RG"
+          echo "resource_group=$FOUND_RG" >> $GITHUB_OUTPUT
+          echo "Found Function App: $APP_NAME in $FOUND_RG"
 
       - name: Capture pre-deployment state
         id: pre-deploy
