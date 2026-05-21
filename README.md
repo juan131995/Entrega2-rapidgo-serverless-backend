@@ -125,28 +125,6 @@ Visión general de la arquitectura de la solución RapidGo Backend Serverless, m
 
 ---
 
-## Consecuencias y Trade-offs Arquitectónicos
-
-### Impacto directo en RapidGo
-
-- **Eliminación de cancelaciones por saturación**: La escalabilidad automática de Azure Functions resuelve el problema crítico donde el servidor monolítico actual supera los 8 segundos de respuesta en horas pico (12m-2pm y 6pm-9pm), eliminando las cancelaciones espontáneas que representan el 12% del tráfico y protegiendo los ingresos por comisión del 18%.
-- **Reducción de $4.200.000 COP a <$50 USD mensuales**: El modelo pago por uso de Consumption Plan + Free Tiers elimina el desperdicio de recursos en horas de baja demanda (2am-8am con 4% de CPU), liberando capital para invertir en crecimiento en las tres ciudades de operación (Medellín, Manizales, Pereira).
-- **Protección de ingresos en horas pico**: Cada minuto de caída representa $180.000 COP en pérdidas. La alta disponibilidad nativa de Azure (SLA 99.9%) limita la inactividad máxima a 44 minutos mensuales, evitando caídas totales como las del servidor dedicado actual con tiempos de restauración de 2-6 horas.
-- **Notificaciones confiables para repartidores y clientes**: La integración nativa con FCM y APNs mediante Notification Hubs eleva la tasa de entrega del 67% actual al >95% requerido, reduciendo la confusión sobre estados de pedidos y mejorando la experiencia de los 340 repartidores activos.
-- **Actualizaciones sin afectar pedidos en curso**: Los despliegues zero-downtime de Azure Functions eliminan las ventanas de mantenimiento de 20-30 minutos que impactaban ventas nocturnas, permitiendo iterar rápidamente sin interrumpir los ~1.200 pedidos diarios promedio.
-
-### Trade-offs específicos del contexto RapidGo
-
-- **Migración ETL de 3 años de datos históricos**: Los datos en MySQL del monolito actual requieren transformación a documentos JSON para Cosmos DB. Este esfuerzo inicial de ingeniería de datos es necesario pero no bloquea la operación, ya que los pedidos nuevos pueden escribirse directamente en el nuevo modelo mientras se migra el histórico en paralelo.
-- **Cold starts en primera invocación del día**: Las funciones en Consumption Plan pueden tardar 1-3 segundos en activarse tras periodos de inactividad (ej: primera orden de la mañana a las 6am). Para RapidGo esto es aceptable dado que el SLA de latencia es <800ms en P95 (no en p100), y se mitiga naturalmente con el volumen constante de pedidos durante el día.
-- **Carga operativa del equipo de infraestructura (1 persona)**: La arquitectura serverless reduce drásticamente la administración manual (no hay servidores que parchear, escalar o monitorear a nivel de SO), pero requiere que el único ingeniero de infraestructura aprenda patrones de observabilidad en Azure (Application Insights, Log Analytics) para mantener la visibilidad del sistema.
-- **Vendor lock-in en ecosistema Azure**: La dependencia de bindings nativos (Cosmos DB Change Feed, Notification Hubs, APIM policies) reduce la portabilidad a AWS o GCP. Para una startup en fase piloto con presupuesto limitado, este trade-off es aceptable: la prioridad es lanzar rápido y validar el modelo de negocio, no la portabilidad multi-cloud.
-- **Limitaciones del Developer Tier en APIM**: El tier gratuito tiene restricciones de throughput y no incluye características avanzadas como caching o transformación compleja. Adecuado para la fase piloto (<$50 USD/mes), pero requerirá migración a Standard tier cuando RapidGo escale a más ciudades o supere los límites del tier gratuito.
-- **Consistencia eventual en estados de pedidos**: Se prioriza latencia sobre consistencia fuerte en el flujo de notificaciones. Un repartidor podría ver un estado "en camino" milisegundos antes que el cliente, pero esto no afecta la operación real del domicilio y es preferible a bloquear la experiencia esperando consistencia fuerte.
-- **Curva de aprendizaje para equipo Node.js/Python**: El equipo actual tiene experiencia en estos lenguajes, lo que facilita la implementación de Azure Functions en Node.js. Sin embargo, el cambio de paradigma de monolito a funciones efímeras sin estado requiere adaptación en patrones de diseño (ej: no mantener sesiones en memoria, usar Cosmos DB como estado compartido).
-
----
-
 *Tecnológico de Antioquia — Institución Universitaria*  
 *Computación en la Nube | Semestre 2026-1*  
 *Profesor: Julian David Florez Sanchez*
