@@ -132,10 +132,10 @@ jobs:
         run: |
           KV_NAME="${{ steps.outputs.outputs.keyVaultName }}"
           echo "📦 Storing Notification Hub connection string..."
-          CONN_STR=$(az notification-hubs namespace authorization-rule list-keys \
-            --resource-group "${{ inputs.rg_name }}" \
-            --namespace-name "${{ inputs.nh_namespace_name }}" \
-            --name "RootManageSharedAccessKey" \
+          SUB_ID=$(az account show --query id -o tsv)
+          CONN_STR=$(az rest \
+            --method post \
+            --url "https://management.azure.com/subscriptions/${SUB_ID}/resourceGroups/${{ inputs.rg_name }}/providers/Microsoft.NotificationHubs/namespaces/${{ inputs.nh_namespace_name }}/AuthorizationRules/RootManageSharedAccessKey/listKeys?api-version=2017-04-01" \
             --query primaryConnectionString \
             -o tsv)
           az keyvault secret set \
