@@ -163,6 +163,33 @@ jobs:
           echo ""
           echo "✅ Soft-delete cleanup completed"
 
+      - name: Cleanup Old Resource Groups
+        run: |
+          echo "🧹 Checking for existing resource groups to clean up..."
+
+          # Get list of old resource groups for this environment
+          OLD_RGS=$(az group list \
+            --query "[?starts_with(name, 'rg-rapidgo-${{ steps.env.outputs.env_name }}-')].name" \
+            -o tsv)
+
+          if [ -n "$OLD_RGS" ]; then
+            echo "Found existing resource groups:"
+            echo "$OLD_RGS"
+            echo ""
+            echo "🗑️  Deleting old resource groups (this may take a few minutes)..."
+
+            for RG in $OLD_RGS; do
+              echo "  Deleting: $RG"
+              az group delete --name "$RG" --yes --no-wait
+            done
+
+            echo "✅ Initiated deletion of old resource groups"
+            echo "⏳ Waiting 60 seconds for deletions to start..."
+            sleep 60
+          else
+            echo "No existing resource groups found - this is a fresh deployment"
+          fi
+
       - name: Create Resource Group
         run: |
           az group create \
