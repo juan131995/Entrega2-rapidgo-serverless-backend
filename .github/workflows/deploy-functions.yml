@@ -54,16 +54,23 @@ jobs:
         id: get-app-name
         run: |
           ENV="${{ steps.env.outputs.name }}"
-          # Find function app by name pattern: rg-{env}-v1-func-*
-          APP_JSON=$(az functionapp list \
-            --query "[?starts_with(name, 'rg-${ENV}-v1-func-')].{name:name, rg:resourceGroup} | [0]" \
-            -o json)
-          APP_NAME=$(echo "$APP_JSON" | jq -r '.name // empty')
-          RG=$(echo "$APP_JSON" | jq -r '.rg // empty')
-          if [ -z "$APP_NAME" ]; then
-            echo "::error::No Function App found matching pattern rg-${ENV}-v1-func-*. Run main-pipeline workflow first."
-            echo "All function apps in subscription:"
-            az functionapp list --query "[].{name:name, rg:resourceGroup}" -o table
+          # Find the resource group by name pattern: rg-rapidgo-{env}-*
+          RG=$(az group list \
+            --query "[?starts_with(name, 'rg-rapidgo-${ENV}-')].name | [0]" \
+            -o tsv)
+          if [ -z "$RG" ] || [ "$RG" == "None" ]; then
+            echo "::error::No resource group found matching rg-rapidgo-${ENV}-*. Run main-pipeline workflow first."
+            exit 1
+          fi
+          echo "Found resource group: $RG"
+          # Find function app inside that resource group
+          APP_NAME=$(az functionapp list \
+            --resource-group "$RG" \
+            --query "[0].name" \
+            -o tsv)
+          if [ -z "$APP_NAME" ] || [ "$APP_NAME" == "None" ]; then
+            echo "::error::No Function App found in resource group $RG."
+            az resource list --resource-group "$RG" --query "[].{name:name, type:type}" -o table
             exit 1
           fi
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
