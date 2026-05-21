@@ -6,7 +6,13 @@ on:
     paths:
       - 'src/infra-arm/**'
       - '.github/workflows/main-pipeline.yml'
-      - '.github/workflows/deploy-*.yml'
+      - '.github/workflows/deploy-resource-group.yml'
+      - '.github/workflows/deploy-storage.yml'
+      - '.github/workflows/deploy-cosmosdb.yml'
+      - '.github/workflows/deploy-notification-hub.yml'
+      - '.github/workflows/deploy-keyvault.yml'
+      - '.github/workflows/deploy-functions-infra.yml'
+      - '.github/workflows/deploy-apim.yml'
   workflow_dispatch:
     inputs:
       environment:

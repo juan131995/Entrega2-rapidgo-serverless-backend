@@ -101,6 +101,7 @@ jobs:
         timeout-minutes: 10
         with:
           app-name: ${{ steps.get-app-name.outputs.app_name }}
+          resource-group-name: ${{ steps.get-app-name.outputs.resource_group }}
           package: src/rapidgo-functions
           respect-pom-xml: false
           respect-funcignore: true
