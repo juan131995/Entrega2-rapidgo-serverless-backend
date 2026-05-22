@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "@azure/cosmos": "^4.1.1",
-    "@azure/notification-hubs": "^1.2.0",
-    "uuid": "^10.0.0"
+    "@azure/notification-hubs": "^1.2.0"
   },
   "devDependencies": {
     "azure-functions-core-tools": "^4.x"

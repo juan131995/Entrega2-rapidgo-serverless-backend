@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { container } = require('../shared/cosmos');
 
 module.exports = async function (context, req) {
@@ -48,7 +48,7 @@ async function crearUsuario(context, req) {
   }
 
   const usuario = {
-    id: uuidv4(),
+    id: randomUUID(),
     tipo: 'usuario',
     nombre,
     email,
