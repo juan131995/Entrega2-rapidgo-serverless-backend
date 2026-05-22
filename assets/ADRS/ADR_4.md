@@ -80,3 +80,26 @@ Azure Blob Storage soluciona los dos problemas más críticos de RapidGo:
 Al usar Blob Storage, todo el contenido multimedia, tanto imagenes como archivos se cargaran al instante sin provocar algun retraso para el uso de los clientes en su día a día, además de ofrecer zonas de redundancia o replicación en caso de que una zona falle.
 
 Con la integración de CDNs, el usuario que necesite utilizar la app tendrá la latencia mínima al momento de visualizar el contenido multimedia gracias a que se descargará todo desde el servidor más cercano.
+
+---
+
+## Consecuencias
+
+Ventajas:
+
+- Almacenamiento eficaz para archivos multimedia dentro de la palicación movil
+- Disponibilidad optima y replicación en distintas zonas geográficas
+- Optimización de costos segun la cantidad de restaurantes y domiciliarios registrados en la aplicación para el almacenamiento
+
+Desventajas:
+
+- No tiene compatibilidad con el sistema de carpetas tradicional al ser un contenedor donde no existe el orden al almacenar archivos
+
+  Trade-offs:
+
+  - Uso de HTTP/HTTPS
+  - Requiere el uso de una API
+  - Más economico al usar volumenes grandes de archivos.
+  - Es ideal para el uso de apps moviles
+  
+
