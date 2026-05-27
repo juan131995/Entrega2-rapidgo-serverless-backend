@@ -269,7 +269,7 @@ Las transiciones válidas son:
 Todas las peticiones pasan por el **API Gateway (APIM)**. La URL base es:
 
 ```
-https://<apim-name>.azure-api.net/api/v1
+https://rg-dev-v1-apim-260521053489.azure-api.net/api/v1
 ```
 
 Todas las peticiones deben incluir el header:
@@ -507,7 +507,7 @@ Antes de ejecutar las peticiones, configura las siguientes variables de entorno 
 
 | Variable | Valor |
 |---|---|
-| `apim_url` | `https://<apim-name>.azure-api.net/api/v1` |
+| `apim_url` | `https://rg-dev-v1-apim-260521053489.azure-api.net/api/v1` |
 | `apim_key` | Clave de suscripción del API Management (sección *Suscripciones* en el portal) |
 | `pedido_id` | Se asigna automáticamente al ejecutar la petición **01 - Registrar Pedido** |
 
